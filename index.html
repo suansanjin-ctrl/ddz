@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>云上斗地主</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">PURE FRONTEND P2P</p>
+          <h1>云上斗地主</h1>
+          <p class="subtitle">
+            纯前端静态页面，使用 WebRTC 手动配对实现 3 人联机。房主负责规则校验和状态同步，不需要自建后端。
+          </p>
+        </div>
+        <div class="hero-card">
+          <div class="hero-metric">
+            <span>模式</span>
+            <strong id="modeLabel">未连接</strong>
+          </div>
+          <div class="hero-metric">
+            <span>你的座位</span>
+            <strong id="seatLabel">未加入</strong>
+          </div>
+          <div class="hero-metric">
+            <span>当前阶段</span>
+            <strong id="phaseLabel">大厅</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel lobby-panel">
+          <div class="panel-title">
+            <h2>联机大厅</h2>
+            <p>房主先生成 Offer，其他玩家选座位加入，再把 Answer 回传给房主。</p>
+          </div>
+
+          <div class="lobby-grid">
+            <article class="subpanel">
+              <h3>房主</h3>
+              <p class="muted">房主默认坐 1 号位，需要分别为 2、3 号位生成连接。</p>
+              <button id="beHostBtn" class="primary">成为房主</button>
+              <div class="seat-connection">
+                <h4>2 号位</h4>
+                <button data-host-offer="p2">生成 Offer</button>
+                <textarea id="offer-p2" readonly placeholder="这里会生成给 2 号位玩家的 Offer"></textarea>
+                <textarea id="answer-p2" placeholder="把 2 号位玩家返回的 Answer 粘贴到这里"></textarea>
+                <button data-host-answer="p2">接入 2 号位</button>
+                <p id="status-p2" class="status-chip">未连接</p>
+              </div>
+              <div class="seat-connection">
+                <h4>3 号位</h4>
+                <button data-host-offer="p3">生成 Offer</button>
+                <textarea id="offer-p3" readonly placeholder="这里会生成给 3 号位玩家的 Offer"></textarea>
+                <textarea id="answer-p3" placeholder="把 3 号位玩家返回的 Answer 粘贴到这里"></textarea>
+                <button data-host-answer="p3">接入 3 号位</button>
+                <p id="status-p3" class="status-chip">未连接</p>
+              </div>
+              <button id="startGameBtn" class="accent" disabled>开始新一局</button>
+            </article>
+
+            <article class="subpanel">
+              <h3>加入房间</h3>
+              <p class="muted">加入者只需要把房主 Offer 粘贴进来，生成 Answer 发回去。</p>
+              <label for="joinSeat">选择座位</label>
+              <select id="joinSeat">
+                <option value="p2">2 号位</option>
+                <option value="p3">3 号位</option>
+              </select>
+              <textarea id="remoteOffer" placeholder="把房主发来的 Offer 粘贴到这里"></textarea>
+              <button id="joinBtn" class="primary">生成 Answer 并加入</button>
+              <textarea id="localAnswer" readonly placeholder="把这里的 Answer 发回房主"></textarea>
+              <p id="joinStatus" class="status-chip">未加入</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="panel-title">
+            <h2>牌桌</h2>
+            <p id="tableSummary">等待房主建立连接。</p>
+          </div>
+
+          <div class="table">
+            <div class="player-slot top" id="player-p2"></div>
+            <div class="player-slot left" id="player-p3"></div>
+            <div class="center-stage">
+              <div class="kitty" id="kittyBox">底牌: 未揭晓</div>
+              <div class="trick" id="trickBox">本轮还没人出牌</div>
+              <div class="turn-banner" id="turnBanner">等待开始</div>
+            </div>
+            <div class="player-slot bottom me" id="player-p1"></div>
+          </div>
+        </section>
+
+        <section class="panel action-panel">
+          <div class="panel-title">
+            <h2>操作区</h2>
+            <p id="actionHint">你的手牌会显示在这里。</p>
+          </div>
+
+          <div id="bidActions" class="action-row hidden">
+            <button data-bid="0">不叫</button>
+            <button data-bid="1">1 分</button>
+            <button data-bid="2">2 分</button>
+            <button data-bid="3">3 分</button>
+          </div>
+
+          <div id="playActions" class="action-row hidden">
+            <button id="playBtn" class="primary">出牌</button>
+            <button id="passBtn">不要</button>
+            <button id="clearSelectionBtn">清空选择</button>
+          </div>
+
+          <div id="handArea" class="hand-area"></div>
+        </section>
+
+        <section class="panel log-panel">
+          <div class="panel-title">
+            <h2>对局日志</h2>
+            <p>联机调试和过程提示都保留在这里。</p>
+          </div>
+          <div id="logBox" class="log-box"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
