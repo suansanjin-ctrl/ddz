@@ -15,7 +15,7 @@
         <p class="eyebrow">LAN PARTY EDITION</p>
         <h1>云上斗地主</h1>
         <p class="hero-copy">
-          现在是更传统的局域网房间模式。一个人开房，周围的人直接点链接进房，满 3 人后开局，自动跳转到正式牌桌。
+          现在改成更像局域网小游戏大厅了。大家打开同一个地址后，会直接看到同网可加入的牌桌和已经坐下的人，不再靠手动传房间号。
         </p>
 
         <div class="server-strip">
@@ -26,12 +26,12 @@
 
         <div class="feature-row">
           <div class="feature-card">
-            <strong>一个链接直接进桌</strong>
-            <span>别人点开就是牌桌，不先看中间页</span>
+            <strong>同网大厅自动显示房间</strong>
+            <span>打开同一个地址，就能看到当前等待中的牌桌</span>
           </div>
           <div class="feature-card">
-            <strong>等待和对局都在桌内</strong>
-            <span>满 3 人后直接在牌桌里开局</span>
+            <strong>一键进桌</strong>
+            <span>不用手输房间号，点一下就入座</span>
           </div>
           <div class="feature-card">
             <strong>更接近 QQ 斗地主</strong>
@@ -44,7 +44,7 @@
         <section class="glass card-panel">
           <div class="panel-head">
             <h2>创建房间</h2>
-            <p>你会成为房主，分享链接给身边的人即可。</p>
+            <p>你会成为房主。开好桌后，同一局域网里打开这个地址的人会在大厅里直接看到它。</p>
           </div>
 
           <form id="createForm" class="stack-form">
@@ -58,21 +58,21 @@
 
         <section class="glass card-panel">
           <div class="panel-head">
-            <h2>加入房间</h2>
-            <p>可以填房间号，也可以直接粘贴分享链接。</p>
+            <h2>局域网大厅</h2>
+            <p>输入昵称后，直接点下面任意一桌即可入座。页面会自动刷新同网里的等待房间。</p>
           </div>
 
-          <form id="joinForm" class="stack-form">
+          <div class="stack-form">
             <label class="field">
               <span>你的昵称</span>
-              <input id="joinName" name="joinName" maxlength="12" placeholder="比如：小王" required />
+              <input id="hallName" name="hallName" maxlength="12" placeholder="比如：小王" required />
             </label>
-            <label class="field">
-              <span>房间号或链接</span>
-              <input id="joinRoom" name="joinRoom" placeholder="例如：A9K2 或 http://192.168.x.x:8000/game.html?room=A9K2" required />
-            </label>
-            <button class="primary-btn" type="submit">进入房间</button>
-          </form>
+            <div class="hall-toolbar">
+              <strong id="hallStats">正在扫描同网牌桌...</strong>
+              <button id="refreshRoomsBtn" class="ghost-btn" type="button">刷新大厅</button>
+            </div>
+            <div id="roomList" class="room-list"></div>
+          </div>
         </section>
       </section>
 
@@ -81,10 +81,12 @@
         <ol class="simple-steps">
           <li>先运行 `python3 server.py`。</li>
           <li>房主打开首页创建房间。</li>
-          <li>把牌桌链接发给同一网络下的另外两个人。</li>
-          <li>别人点开链接后会直接进入牌桌等待界面。</li>
+          <li>同一网络下的人打开同一个首页地址。</li>
+          <li>大厅会自动显示当前等待中的牌桌和桌上玩家。</li>
+          <li>其他人输入昵称后直接点“加入这桌”。</li>
           <li>满 3 人后房主开局，桌内直接切换到对局状态。</li>
         </ol>
+        <p class="inline-message">如果你们不在同一个局域网，这种“自动看到同网房间”的方式就不成立，还是要走可公网访问的服务器。</p>
         <p id="homeMessage" class="inline-message"></p>
       </section>
     </main>

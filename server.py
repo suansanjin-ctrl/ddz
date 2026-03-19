@@ -489,6 +489,47 @@ def build_room_summary(room):
     }
 
 
+def build_lobby_rooms():
+    items = []
+    for room in sorted(ROOMS.values(), key=lambda item: (room_phase(item) != "waiting", -item["updated_at"])):
+        phase = room_phase(room)
+        host = next((player for player in room["players"] if player["id"] == room["host_id"]), room["players"][0])
+        player_count = len(room["players"])
+        can_join = phase == "waiting" and player_count < PLAYER_MAX
+        if phase == "waiting":
+            status = "等待加入" if can_join else "已坐满"
+        elif phase == "finished":
+            status = "已结束"
+        else:
+            status = "对局中"
+        items.append(
+            {
+                "roomId": room["id"],
+                "phase": phase,
+                "status": status,
+                "shareUrl": build_share_url(room["id"]),
+                "playerCount": player_count,
+                "capacity": PLAYER_MAX,
+                "hostName": host["name"],
+                "canJoin": can_join,
+                "updatedAt": room["updated_at"],
+                "players": [
+                    {
+                        "id": player["id"],
+                        "name": player["name"],
+                        "isHost": player["id"] == room["host_id"],
+                    }
+                    for player in room["players"]
+                ],
+            }
+        )
+    return {
+        "rooms": items,
+        "joinableCount": sum(1 for item in items if item["canJoin"]),
+        "updatedAt": now(),
+    }
+
+
 def build_state(room, viewer):
     game = room["game"]
     order = [player["id"] for player in room["players"]]
@@ -587,6 +628,12 @@ class DdzHandler(SimpleHTTPRequestHandler):
                         "lanOrigin": f"http://{LAN_IP}:{SERVER_PORT}",
                     }
                 )
+                return
+
+            if parsed.path == "/api/rooms/public":
+                with ROOM_LOCK:
+                    payload = build_lobby_rooms()
+                self.write_json(payload)
                 return
 
             if parsed.path.startswith("/api/rooms/") and parsed.path.endswith("/summary"):
