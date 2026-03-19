@@ -26,16 +26,16 @@
 
         <div class="feature-row">
           <div class="feature-card">
-            <strong>局域网链接进房</strong>
-            <span>不再手动复制 Offer / Answer</span>
+            <strong>一个链接直接进桌</strong>
+            <span>别人点开就是牌桌，不先看中间页</span>
           </div>
           <div class="feature-card">
-            <strong>房间页和游戏页分开</strong>
-            <span>更像正常小游戏流程</span>
+            <strong>等待和对局都在桌内</strong>
+            <span>满 3 人后直接在牌桌里开局</span>
           </div>
           <div class="feature-card">
-            <strong>服务端统一发牌</strong>
-            <span>同步和规则更稳定</span>
+            <strong>更接近 QQ 斗地主</strong>
+            <span>绿色牌桌、底部手牌、桌内操作</span>
           </div>
         </div>
       </section>
@@ -69,7 +69,7 @@
             </label>
             <label class="field">
               <span>房间号或链接</span>
-              <input id="joinRoom" name="joinRoom" placeholder="例如：A9K2 或 http://192.168.x.x:8000/room.html?room=A9K2" required />
+              <input id="joinRoom" name="joinRoom" placeholder="例如：A9K2 或 http://192.168.x.x:8000/game.html?room=A9K2" required />
             </label>
             <button class="primary-btn" type="submit">进入房间</button>
           </form>
@@ -81,8 +81,9 @@
         <ol class="simple-steps">
           <li>先运行 `python3 server.py`。</li>
           <li>房主打开首页创建房间。</li>
-          <li>把房间链接发给同一网络下的另外两个人。</li>
-          <li>满 3 人后房主开局，所有人自动进入牌桌。</li>
+          <li>把牌桌链接发给同一网络下的另外两个人。</li>
+          <li>别人点开链接后会直接进入牌桌等待界面。</li>
+          <li>满 3 人后房主开局，桌内直接切换到对局状态。</li>
         </ol>
         <p id="homeMessage" class="inline-message"></p>
       </section>

@@ -6,73 +6,95 @@
     <title>牌桌 - 云上斗地主</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="page-shell game-page">
-    <div class="ambient ambient-left"></div>
-    <div class="ambient ambient-right"></div>
-
-    <main class="game-layout">
-      <section class="table-header glass">
-        <div>
-          <p class="eyebrow">TABLE</p>
-          <h1>房间 <span id="gameRoomCode">----</span></h1>
-          <p id="gameStatusText" class="hero-copy">正在同步牌局...</p>
+  <body class="qq-table-page">
+    <main class="table-app">
+      <header class="table-topbar">
+        <div class="table-title">
+          <span class="table-brand">QQ 风格牌桌</span>
+          <strong>房间 <span id="gameRoomCode">----</span></strong>
         </div>
-        <div class="header-actions">
-          <a class="ghost-btn" id="backRoomBtn" href="./room.html">返回房间</a>
-          <button id="restartBtn" class="mini-btn" type="button" disabled>再来一局</button>
+        <div class="table-tools">
+          <button id="copyLinkBtn" class="top-btn" type="button">复制邀请链接</button>
+          <a class="top-btn" href="./index.html">返回首页</a>
         </div>
-      </section>
+      </header>
 
-      <section class="table-wrap">
-        <div id="opponentTop" class="glass opponent-panel top-seat"></div>
-        <div class="table-center glass">
-          <div class="center-block">
-            <span>底牌</span>
-            <div id="kittyZone" class="kitty-zone">等待地主产生</div>
+      <section class="qq-table">
+        <div class="table-felt">
+          <div id="seatLeft" class="seat-badge seat-left"></div>
+          <div id="seatRight" class="seat-badge seat-right"></div>
+
+          <div class="desk-center">
+            <div class="desk-pill" id="gameStatusText">正在连接牌桌...</div>
+            <div class="desk-landlord">
+              <span>底牌</span>
+              <div id="kittyZone" class="desk-card-row"></div>
+            </div>
+          <div class="desk-play-area">
+            <div class="desk-section-title">桌面出牌</div>
+            <div id="trickZone" class="desk-card-row large"></div>
           </div>
-          <div class="center-block">
-            <span>当前桌面</span>
-            <div id="trickZone" class="trick-zone">还没人出牌</div>
+            <div class="desk-turn-wrap">
+              <div class="desk-turn" id="turnBadge">等待开始</div>
+              <div class="turn-timer hidden" id="turnTimer">15</div>
+            </div>
+            <div id="deskFeed" class="desk-feed"></div>
           </div>
-          <div class="center-block emphatic">
-            <span>轮到</span>
-            <strong id="turnBadge">等待开始</strong>
+
+          <div id="mySeat" class="seat-badge seat-bottom"></div>
+
+          <div id="tableOverlay" class="table-overlay">
+            <div class="overlay-panel">
+              <p class="overlay-kicker">分享链接，直接进桌</p>
+              <h1 id="overlayTitle">正在进入牌桌</h1>
+              <p id="overlayDesc" class="overlay-desc">等待房间信息...</p>
+
+              <div class="overlay-share">
+                <textarea id="shareLink" readonly></textarea>
+                <button id="overlayCopyBtn" class="primary-cta" type="button">复制链接</button>
+              </div>
+
+              <form id="joinForm" class="overlay-join hidden">
+                <input id="joinName" maxlength="12" placeholder="输入你的昵称" required />
+                <button class="primary-cta" type="submit">进入牌桌</button>
+              </form>
+
+              <div id="waitingPlayers" class="waiting-players"></div>
+
+              <div class="overlay-actions">
+                <button id="startBtn" class="primary-cta hidden" type="button">开始游戏</button>
+                <button id="overlayHomeBtn" class="ghost-cta" type="button">返回首页</button>
+              </div>
+
+              <p id="overlayMessage" class="overlay-message"></p>
+            </div>
           </div>
         </div>
-        <div id="opponentRight" class="glass opponent-panel side-seat"></div>
       </section>
 
-      <section class="glass action-bar">
-        <div class="action-info">
-          <strong id="playerSummary">你的手牌</strong>
-          <span id="actionHint">等待发牌...</span>
+      <section class="bottom-panel">
+        <div class="action-strip">
+          <div class="action-copy">
+            <strong id="playerSummary">你的手牌</strong>
+            <span id="actionHint">等待其他玩家进入...</span>
+          </div>
+
+          <div id="bidActions" class="action-buttons hidden">
+            <button data-bid="0" type="button">不叫</button>
+            <button data-bid="1" type="button">1 分</button>
+            <button data-bid="2" type="button">2 分</button>
+            <button data-bid="3" type="button">3 分</button>
+          </div>
+
+          <div id="playActions" class="action-buttons hidden">
+            <button id="playBtn" class="primary-cta" type="button">出牌</button>
+            <button id="passBtn" type="button">不要</button>
+            <button id="clearBtn" type="button">重选</button>
+            <button id="restartBtn" type="button">再来一局</button>
+          </div>
         </div>
 
-        <div id="bidActions" class="button-row hidden">
-          <button data-bid="0" type="button">不叫</button>
-          <button data-bid="1" type="button">1 分</button>
-          <button data-bid="2" type="button">2 分</button>
-          <button data-bid="3" type="button">3 分</button>
-        </div>
-
-        <div id="playActions" class="button-row hidden">
-          <button id="playBtn" class="primary-btn" type="button">出牌</button>
-          <button id="passBtn" type="button">不要</button>
-          <button id="clearBtn" type="button">清空</button>
-        </div>
-      </section>
-
-      <section class="glass hand-panel">
-        <div id="mySeat" class="self-seat"></div>
-        <div id="myHand" class="hand-fan"></div>
-      </section>
-
-      <section class="glass log-panel">
-        <div class="panel-head">
-          <h2>牌局动态</h2>
-          <p>叫分、出牌和结算都会显示在这里。</p>
-        </div>
-        <div id="gameLog" class="log-list"></div>
+        <div id="myHand" class="qq-hand"></div>
       </section>
     </main>
 

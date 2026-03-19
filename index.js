@@ -1,4 +1,4 @@
-const { apiGet, apiPost, roomIdFromInput, saveSession, goToRoom, copyText, setMessage } = window.DdzCommon;
+const { apiGet, apiPost, roomIdFromInput, saveSession, goToGame, copyText, setMessage } = window.DdzCommon;
 
 const serverOrigin = document.getElementById("serverOrigin");
 const copyOriginBtn = document.getElementById("copyOriginBtn");
@@ -34,7 +34,7 @@ createForm.addEventListener("submit", async (event) => {
   try {
     const payload = await apiPost("/api/rooms", { name: createName.value });
     saveSession(payload.roomId, payload);
-    goToRoom(payload.roomId);
+    goToGame(payload.roomId);
   } catch (error) {
     setMessage(homeMessage, error.message, true);
   }
@@ -52,7 +52,7 @@ joinForm.addEventListener("submit", async (event) => {
   try {
     const payload = await apiPost(`/api/rooms/${roomId}/join`, { name: joinName.value });
     saveSession(payload.roomId, payload);
-    goToRoom(payload.roomId);
+    goToGame(payload.roomId);
   } catch (error) {
     setMessage(homeMessage, error.message, true);
   }

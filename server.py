@@ -474,7 +474,7 @@ def get_player(room, player_id, token):
 
 
 def build_share_url(room_id):
-    return f"http://{LAN_IP}:{SERVER_PORT}/room.html?room={room_id}"
+    return f"http://{LAN_IP}:{SERVER_PORT}/game.html?room={room_id}"
 
 
 def build_room_summary(room):
