@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>牌桌 - 云上斗地主</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="page-shell game-page">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <main class="game-layout">
+      <section class="table-header glass">
+        <div>
+          <p class="eyebrow">TABLE</p>
+          <h1>房间 <span id="gameRoomCode">----</span></h1>
+          <p id="gameStatusText" class="hero-copy">正在同步牌局...</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost-btn" id="backRoomBtn" href="./room.html">返回房间</a>
+          <button id="restartBtn" class="mini-btn" type="button" disabled>再来一局</button>
+        </div>
+      </section>
+
+      <section class="table-wrap">
+        <div id="opponentTop" class="glass opponent-panel top-seat"></div>
+        <div class="table-center glass">
+          <div class="center-block">
+            <span>底牌</span>
+            <div id="kittyZone" class="kitty-zone">等待地主产生</div>
+          </div>
+          <div class="center-block">
+            <span>当前桌面</span>
+            <div id="trickZone" class="trick-zone">还没人出牌</div>
+          </div>
+          <div class="center-block emphatic">
+            <span>轮到</span>
+            <strong id="turnBadge">等待开始</strong>
+          </div>
+        </div>
+        <div id="opponentRight" class="glass opponent-panel side-seat"></div>
+      </section>
+
+      <section class="glass action-bar">
+        <div class="action-info">
+          <strong id="playerSummary">你的手牌</strong>
+          <span id="actionHint">等待发牌...</span>
+        </div>
+
+        <div id="bidActions" class="button-row hidden">
+          <button data-bid="0" type="button">不叫</button>
+          <button data-bid="1" type="button">1 分</button>
+          <button data-bid="2" type="button">2 分</button>
+          <button data-bid="3" type="button">3 分</button>
+        </div>
+
+        <div id="playActions" class="button-row hidden">
+          <button id="playBtn" class="primary-btn" type="button">出牌</button>
+          <button id="passBtn" type="button">不要</button>
+          <button id="clearBtn" type="button">清空</button>
+        </div>
+      </section>
+
+      <section class="glass hand-panel">
+        <div id="mySeat" class="self-seat"></div>
+        <div id="myHand" class="hand-fan"></div>
+      </section>
+
+      <section class="glass log-panel">
+        <div class="panel-head">
+          <h2>牌局动态</h2>
+          <p>叫分、出牌和结算都会显示在这里。</p>
+        </div>
+        <div id="gameLog" class="log-list"></div>
+      </section>
+    </main>
+
+    <script src="./shared.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>
