@@ -88,6 +88,10 @@ function goToGame(roomId) {
   window.location.href = `./game.html?room=${encodeURIComponent(roomId)}`;
 }
 
+function goHome() {
+  window.location.href = "./index.html";
+}
+
 async function copyText(text) {
   await navigator.clipboard.writeText(text);
 }
@@ -115,12 +119,13 @@ function bidText(bid) {
 }
 
 function relativePlayers(state) {
-  const selfIndex = state.order.indexOf(state.playerId);
-  const topId = state.order[(selfIndex + 1) % state.order.length];
-  const rightId = state.order[(selfIndex + 2) % state.order.length];
+  const order = state.order || [];
+  const selfIndex = order.indexOf(state.playerId);
+  const leftId = selfIndex >= 0 && order.length > 1 ? order[(selfIndex + 1) % order.length] : null;
+  const rightId = selfIndex >= 0 && order.length > 2 ? order[(selfIndex + 2) % order.length] : null;
   return {
     self: state.players.find((player) => player.id === state.playerId),
-    top: state.players.find((player) => player.id === topId),
+    left: state.players.find((player) => player.id === leftId),
     right: state.players.find((player) => player.id === rightId),
   };
 }
@@ -135,6 +140,7 @@ window.DdzCommon = {
   roomIdFromLocation,
   goToRoom,
   goToGame,
+  goHome,
   copyText,
   setMessage,
   escapeHtml,

@@ -3,67 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>房间大厅 - 云上斗地主</title>
+    <title>跳转中 - 云上斗地主</title>
+    <meta http-equiv="refresh" content="0; url=./index.html" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="page-shell room-page">
-    <div class="ambient ambient-left"></div>
-    <div class="ambient ambient-right"></div>
-
-    <main class="room-layout">
-      <section class="glass room-banner">
-        <div>
-          <p class="eyebrow">ROOM LOBBY</p>
-          <h1>房间 <span id="roomCode">----</span></h1>
-          <p id="roomHeadline" class="hero-copy">正在读取房间信息...</p>
-        </div>
-        <div class="room-actions">
-          <a class="ghost-btn" href="./index.html">返回首页</a>
-          <button id="copyLinkBtn" class="mini-btn" type="button">复制房间链接</button>
-        </div>
-      </section>
-
-      <section id="joinCard" class="glass join-card hidden">
-        <div class="panel-head">
-          <h2>加入这个房间</h2>
-          <p>输入昵称后就能坐下，准备开始。</p>
-        </div>
-        <form id="quickJoinForm" class="stack-form">
-          <label class="field">
-            <span>你的昵称</span>
-            <input id="quickJoinName" maxlength="12" placeholder="比如：小李" required />
-          </label>
-          <button class="primary-btn" type="submit">加入房间</button>
-        </form>
-      </section>
-
-      <section class="room-main-grid">
-        <section class="glass seats-panel">
-          <div class="panel-head">
-            <h2>座位</h2>
-            <p>3 人到齐后，房主一键开局。</p>
-          </div>
-          <div id="seatList" class="seat-list"></div>
-        </section>
-
-        <section class="glass share-panel">
-          <div class="panel-head">
-            <h2>分享方式</h2>
-            <p>发这个链接给同一局域网里的朋友。</p>
-          </div>
-          <textarea id="shareLink" readonly></textarea>
-          <button id="startBtn" class="primary-btn" type="button" disabled>开始游戏</button>
-          <p id="roomMessage" class="inline-message"></p>
-        </section>
-      </section>
-
-      <section class="glass tips-panel">
-        <h3>进入后会发生什么</h3>
-        <p>房主点击“开始游戏”后，所有已加入的玩家都会自动跳转到正式牌桌页面，不需要再次手动操作。</p>
-      </section>
+  <body class="compat-page">
+    <main class="compat-panel">
+      <h1>正在跳转到新牌桌入口</h1>
+      <p>这个旧房间页已经停用，现在会直接进入牌桌页面。</p>
+      <p><a href="./index.html">如果没有自动跳转，点这里返回首页。</a></p>
     </main>
-
-    <script src="./shared.js"></script>
-    <script src="./room.js"></script>
+    <script>
+      const room = new URLSearchParams(window.location.search).get("room");
+      window.location.replace(room ? `./game.html?room=${encodeURIComponent(room)}` : "./index.html");
+    </script>
   </body>
 </html>
