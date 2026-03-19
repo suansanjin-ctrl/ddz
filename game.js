@@ -18,11 +18,17 @@ const roomId = roomIdFromLocation();
 const ui = {
   roomCode: document.getElementById("gameRoomCode"),
   copyLinkBtn: document.getElementById("copyLinkBtn"),
+  tableFelt: document.querySelector(".table-felt"),
   statusText: document.getElementById("gameStatusText"),
+  stageBadge: document.getElementById("stageBadge"),
+  stagePrompt: document.getElementById("stagePrompt"),
   seatLeft: document.getElementById("seatLeft"),
   seatRight: document.getElementById("seatRight"),
   mySeat: document.getElementById("mySeat"),
+  deckDock: document.getElementById("deckDock"),
+  dealBanner: document.getElementById("dealBanner"),
   kittyZone: document.getElementById("kittyZone"),
+  kittyHint: document.getElementById("kittyHint"),
   trickZone: document.getElementById("trickZone"),
   turnBadge: document.getElementById("turnBadge"),
   turnTimer: document.getElementById("turnTimer"),
@@ -60,10 +66,74 @@ const app = {
   turnDeadline: 0,
   lastTurnPlayerId: null,
   lastPhase: null,
+  lastRenderedPhase: null,
+  dealTimer: null,
+  dealCleanupTimer: null,
 };
 
 if (!roomId) {
   goHome();
+}
+
+function setTablePhase(phase) {
+  ui.tableFelt.dataset.phase = phase || "waiting";
+}
+
+function setStageCopy(badge, prompt, kittyHint) {
+  ui.stageBadge.textContent = badge;
+  ui.stagePrompt.textContent = prompt;
+  ui.kittyHint.textContent = kittyHint;
+}
+
+function stopDealEffect() {
+  window.clearTimeout(app.dealTimer);
+  window.clearTimeout(app.dealCleanupTimer);
+  ui.tableFelt.classList.remove("is-dealing");
+  ui.myHand.classList.remove("dealing");
+  ui.dealBanner.classList.add("hidden");
+}
+
+function triggerDealEffect() {
+  stopDealEffect();
+  ui.tableFelt.classList.add("is-dealing");
+  ui.myHand.classList.add("dealing");
+  ui.dealBanner.textContent = "发牌中";
+  ui.dealBanner.classList.remove("hidden");
+  app.dealTimer = window.setTimeout(() => {
+    ui.dealBanner.textContent = "准备叫分";
+  }, 950);
+  app.dealCleanupTimer = window.setTimeout(() => {
+    ui.tableFelt.classList.remove("is-dealing");
+    ui.myHand.classList.remove("dealing");
+    ui.dealBanner.classList.add("hidden");
+  }, 1900);
+}
+
+function rememberPhase(phase) {
+  const previous = app.lastRenderedPhase;
+  app.lastRenderedPhase = phase;
+  if (previous === "waiting" && phase === "bidding") {
+    triggerDealEffect();
+    return;
+  }
+  if (phase === "waiting") {
+    stopDealEffect();
+  }
+}
+
+function seatBacksMarkup(count, side = "") {
+  if (!count) {
+    return "";
+  }
+  const visible = Math.max(1, Math.min(count, 8));
+  return `
+    <div class="seat-handbacks ${side}">
+      ${Array.from({ length: visible })
+        .map((_, index) => `<span class="mini-card-back" style="--back-index:${index}"></span>`)
+        .join("")}
+      <em class="seat-handcount">${count} 张</em>
+    </div>
+  `;
 }
 
 function seatMarkup(player, options = {}) {
@@ -81,6 +151,7 @@ function seatMarkup(player, options = {}) {
   const count = typeof player.handCount === "number" ? `${player.handCount} 张` : "已入座";
   const turn = options.isTurn ? '<span class="seat-turning">出牌中</span>' : "";
   const landlordFlag = player.isLandlord ? '<span class="landlord-flag">地主</span>' : "";
+  const backs = options.showBacks ? seatBacksMarkup(options.backCount ?? player.handCount, options.side) : "";
 
   return `
     <div class="seat-card ${options.self ? "self" : ""} ${player.isLandlord ? "landlord" : ""}">
@@ -90,6 +161,7 @@ function seatMarkup(player, options = {}) {
         <span>${escapeHtml(role)}${bid ? ` · ${escapeHtml(bid)}` : ""}</span>
         <em>${escapeHtml(count)}</em>
       </div>
+      ${backs}
       ${landlordFlag}
       ${turn}
     </div>
@@ -127,9 +199,21 @@ function renderWaitingPlayers(players) {
 
 function renderPublicSummary(summary) {
   app.summary = summary;
+  const phase = summary.phase === "waiting" ? "waiting" : "playing";
+  rememberPhase(phase);
   app.turnDeadline = 0;
   app.lastTurnPlayerId = null;
   app.lastPhase = null;
+  setTablePhase(phase);
+  setStageCopy(
+    summary.canJoin ? "牌桌等你入座" : summary.phase === "waiting" ? "这桌已经坐满" : "牌局进行中",
+    summary.canJoin
+      ? "输入昵称后就会坐到牌桌上，房主开始后自动进入对局。"
+      : summary.phase === "waiting"
+        ? "已经有 3 个人坐下了，等房主点开始。"
+        : "这一局已经开打了，等下一桌会更合适。",
+    summary.phase === "waiting" ? "房主开局后会亮底牌" : "底牌已经跟随本局发出"
+  );
   ui.roomCode.textContent = summary.roomId || "----";
   ui.shareLink.value = summary.shareUrl || window.location.href;
   ui.statusText.textContent = `当前 ${summary.playerCount}/${summary.capacity} 人，等待开局`;
@@ -159,11 +243,20 @@ function renderPublicSummary(summary) {
 
 function renderWaitingState(state) {
   app.state = state;
+  rememberPhase("waiting");
   app.turnDeadline = 0;
   app.lastTurnPlayerId = null;
   app.lastPhase = null;
   const relative = relativePlayers(state);
   const me = relative.self;
+  setTablePhase("waiting");
+  setStageCopy(
+    state.canStart ? "牌桌已坐满" : "等待玩家入座",
+    state.canStart
+      ? "人已经齐了，房主点开始后会直接发牌。"
+      : "把这个链接发给身边的人，他们点开后会直接来到这张桌子。",
+    "开局后会自动发出底牌"
+  );
   ui.roomCode.textContent = state.roomId;
   ui.shareLink.value = state.shareUrl;
   ui.overlay.classList.remove("hidden");
@@ -190,37 +283,73 @@ function renderWaitingState(state) {
   ui.deskFeed.textContent = state.canStart ? "满 3 人了，点击开始。" : "链接已分享后，其他人点开即可直接入座。";
   ui.bidActions.classList.add("hidden");
   ui.playActions.classList.add("hidden");
-  ui.playerSummary.textContent = `${escapeHtml(me?.name || "你")} 已入座`;
+  ui.playerSummary.textContent = `${me?.name || "你"} 已入座`;
   ui.actionHint.textContent = state.canStart ? "你是房主，可以直接开局。" : "等待房主开始游戏。";
   ui.restartBtn.disabled = true;
 }
 
 function renderPlayingState(state) {
   app.state = state;
+  rememberPhase(state.phase);
   const relative = relativePlayers(state);
   const me = relative.self;
   const turnPlayer = state.players.find((player) => player.id === state.turnPlayerId);
   const winner = state.players.find((player) => player.id === state.winnerPlayerId);
+  const lastPlayPlayer = state.lastPlay ? state.players.find((player) => player.id === state.lastPlay.playerId) : null;
+  const landlord = state.players.find((player) => player.id === state.landlordPlayerId);
   const selectedSet = new Set(state.myHand.map((card) => card.id));
+  const isMyTurn = state.turnPlayerId === state.playerId;
   app.selected = app.selected.filter((id) => selectedSet.has(id));
 
   ui.overlay.classList.add("hidden");
+  setTablePhase(state.phase);
   ui.roomCode.textContent = state.roomId;
   ui.shareLink.value = state.shareUrl;
   ui.statusText.textContent =
     state.phase === "bidding"
-      ? `当前最高叫分 ${state.highestBid} 分`
+      ? `抢地主中 · 当前最高 ${state.highestBid} 分`
       : state.phase === "finished"
-        ? `${escapeHtml(winner?.name || "玩家")} 获胜`
-        : `地主：${escapeHtml(state.players.find((player) => player.id === state.landlordPlayerId)?.name || "待定")}`;
+        ? `${winner?.name || "玩家"} 获胜`
+        : `地主：${landlord?.name || "待定"}`;
+
+  if (state.phase === "bidding") {
+    setStageCopy(
+      "抢地主",
+      isMyTurn ? "轮到你叫分，分数越高越容易拿到地主。" : `等待 ${turnPlayer?.name || "玩家"} 叫分。`,
+      state.highestBid > 0 ? `当前桌面最高叫分 ${state.highestBid} 分` : "还没人叫分"
+    );
+  } else if (state.phase === "playing") {
+    const followText =
+      state.lastPlay && state.lastPlay.playerId !== state.playerId
+        ? `需要压过 ${lastPlayPlayer?.name || "玩家"} 的 ${state.lastPlay.comboLabel}`
+        : "你当前是先手，可以自由选择合法牌型。";
+    setStageCopy(
+      "出牌阶段",
+      isMyTurn ? followText : `等待 ${turnPlayer?.name || "玩家"} 出牌。`,
+      landlord ? `底牌已经归 ${landlord.name}` : "地主确定后底牌会显示在这里"
+    );
+  } else {
+    const landlordWon = winner && winner.id === state.landlordPlayerId;
+    setStageCopy(
+      landlordWon ? "地主胜利" : "农民胜利",
+      `${winner?.name || "玩家"} 已经把手牌出完，这一局结束了。`,
+      "可以直接在这张桌子上继续下一局"
+    );
+  }
 
   ui.seatLeft.innerHTML = seatMarkup(relative.left, {
     placeholder: "等待左侧玩家",
     isTurn: state.turnPlayerId === relative.left?.id,
+    showBacks: state.phase !== "waiting",
+    backCount: relative.left?.handCount,
+    side: "left",
   });
   ui.seatRight.innerHTML = seatMarkup(relative.right, {
     placeholder: "等待右侧玩家",
     isTurn: state.turnPlayerId === relative.right?.id,
+    showBacks: state.phase !== "waiting",
+    backCount: relative.right?.handCount,
+    side: "right",
   });
   ui.mySeat.innerHTML = seatMarkup(me, {
     self: true,
@@ -230,9 +359,8 @@ function renderPlayingState(state) {
 
   ui.kittyZone.innerHTML = playedCardsMarkup(state.kitty);
   if (state.lastPlay) {
-    const lastPlayer = state.players.find((player) => player.id === state.lastPlay.playerId);
     ui.trickZone.innerHTML = `
-      <div class="desk-play-head">${escapeHtml(lastPlayer?.name || "玩家")} · ${escapeHtml(state.lastPlay.comboLabel)}</div>
+      <div class="desk-play-head">${escapeHtml(lastPlayPlayer?.name || "玩家")} · ${escapeHtml(state.lastPlay.comboLabel)}</div>
       <div class="desk-card-row large">${playedCardsMarkup(state.lastPlay.cards)}</div>
     `;
   } else {
@@ -241,15 +369,20 @@ function renderPlayingState(state) {
 
   ui.turnBadge.textContent =
     state.phase === "finished"
-      ? `${escapeHtml(winner?.name || "玩家")} 胜利`
-      : `${escapeHtml(turnPlayer?.name || "玩家")} 操作中`;
+      ? `${winner?.name || "玩家"} 胜利`
+      : isMyTurn
+        ? state.phase === "bidding"
+          ? "轮到你叫分"
+          : "轮到你出牌"
+        : `${turnPlayer?.name || "玩家"} 操作中`;
   syncTurnTimer(state);
 
-  ui.deskFeed.innerHTML = [...state.logs].slice(-3).map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+  ui.deskFeed.innerHTML = [...state.logs]
+    .slice(-4)
+    .map((line) => `<div class="feed-line"><span class="feed-dot"></span><span>${escapeHtml(line)}</span></div>`)
+    .join("");
 
-  ui.playerSummary.textContent = `${escapeHtml(me?.name || "你")} · ${state.myHand.length} 张手牌`;
-
-  const isMyTurn = state.turnPlayerId === state.playerId;
+  ui.playerSummary.textContent = `${me?.name || "你"} · ${state.myHand.length} 张手牌`;
   ui.bidActions.classList.toggle("hidden", !(state.phase === "bidding" && isMyTurn));
   ui.playActions.classList.toggle("hidden", !(state.phase === "playing" || state.phase === "finished"));
   ui.playBtn.disabled = !(state.phase === "playing" && isMyTurn && app.selected.length);
@@ -306,7 +439,7 @@ function renderMyHand(cards) {
           type="button"
           class="hand-card ${card.color || ""} ${selected}"
           data-card-id="${card.id}"
-          style="z-index:${index + 1}; margin-left:${index === 0 ? 0 : -38}px"
+          style="--card-index:${index}; z-index:${index + 1}; margin-left:${index === 0 ? 0 : -38}px"
         >
           <span class="hand-corner top">${escapeHtml(card.icon || "")}<strong>${escapeHtml(card.rank)}</strong></span>
           <span class="hand-face">${escapeHtml(card.label)}</span>
