@@ -4,7 +4,6 @@ import argparse
 import json
 import random
 import socket
-import string
 import threading
 import time
 import uuid
@@ -478,6 +477,18 @@ def build_share_url(room_id):
     return f"http://{LAN_IP}:{SERVER_PORT}/room.html?room={room_id}"
 
 
+def build_room_summary(room):
+    return {
+        "roomId": room["id"],
+        "phase": room_phase(room),
+        "shareUrl": build_share_url(room["id"]),
+        "playerCount": len(room["players"]),
+        "capacity": PLAYER_MAX,
+        "players": [{"id": player["id"], "name": player["name"]} for player in room["players"]],
+        "canJoin": room_phase(room) == "waiting" and len(room["players"]) < PLAYER_MAX,
+    }
+
+
 def build_state(room, viewer):
     game = room["game"]
     order = [player["id"] for player in room["players"]]
@@ -576,6 +587,14 @@ class DdzHandler(SimpleHTTPRequestHandler):
                         "lanOrigin": f"http://{LAN_IP}:{SERVER_PORT}",
                     }
                 )
+                return
+
+            if parsed.path.startswith("/api/rooms/") and parsed.path.endswith("/summary"):
+                room_id = parsed.path.split("/")[3]
+                with ROOM_LOCK:
+                    room = get_room(room_id)
+                    payload = build_room_summary(room)
+                self.write_json(payload)
                 return
 
             if parsed.path.startswith("/api/rooms/") and parsed.path.endswith("/state"):
