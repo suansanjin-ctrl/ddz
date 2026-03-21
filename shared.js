@@ -1,4 +1,5 @@
 const STORAGE_KEY = "ddz-lan-sessions";
+const REQUEST_TIMEOUT_MS = 10000;
 
 function readSessions() {
   try {
@@ -30,13 +31,32 @@ function clearSession(roomId) {
 }
 
 async function apiRequest(path, options = {}) {
-  const response = await fetch(path, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutId = controller ? window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : 0;
+  let response;
+
+  try {
+    response = await fetch(path, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+      signal: controller ? controller.signal : options.signal,
+    });
+  } catch (error) {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+    if (error?.name === "AbortError") {
+      throw new Error("请求超时，请确认局域网服务还在运行。");
+    }
+    throw new Error("连接服务器失败，请确认你和房主在同一网络并且服务已经启动。");
+  }
+
+  if (timeoutId) {
+    window.clearTimeout(timeoutId);
+  }
 
   let payload = {};
   try {
@@ -93,7 +113,23 @@ function goHome() {
 }
 
 async function copyText(text) {
-  await navigator.clipboard.writeText(text);
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const helper = document.createElement("textarea");
+  helper.value = text;
+  helper.setAttribute("readonly", "readonly");
+  helper.style.position = "fixed";
+  helper.style.opacity = "0";
+  document.body.appendChild(helper);
+  helper.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(helper);
+  if (!copied) {
+    throw new Error("复制失败");
+  }
 }
 
 function setMessage(node, message, isError = false) {
