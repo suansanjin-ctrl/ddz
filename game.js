@@ -114,6 +114,29 @@ function startPolling() {
   }
 }
 
+function showClosedRoom(message) {
+  stopPolling();
+  app.turnDeadline = 0;
+  ui.turnTimer.classList.add("hidden");
+  ui.overlay.classList.remove("hidden");
+  ui.overlayTitle.textContent = "这桌已经不可用";
+  ui.overlayDesc.textContent = message || "房间可能已经过期、被清理，或者房主已经重新开桌。";
+  ui.joinForm.classList.add("hidden");
+  ui.startBtn.classList.add("hidden");
+  ui.waitingPlayers.innerHTML = "";
+  ui.shareLink.value = window.location.href;
+  ui.statusText.textContent = "牌桌不可用";
+  ui.turnBadge.textContent = "请返回首页";
+  ui.kittyZone.innerHTML = '<div class="desk-placeholder">牌桌已关闭</div>';
+  ui.trickZone.innerHTML = '<div class="desk-placeholder">请返回首页重新加入</div>';
+  ui.deskFeed.textContent = "返回首页后，可以重新进入其他牌桌。";
+  ui.bidActions.classList.add("hidden");
+  ui.playActions.classList.add("hidden");
+  ui.playerSummary.textContent = "当前没有可用牌桌";
+  ui.actionHint.textContent = "请返回首页，从局域网大厅重新选择牌桌。";
+  setMessage(ui.overlayMessage, message || "房间已失效。", true);
+}
+
 async function recoverFromSessionError(message) {
   if (!app.session) {
     return false;
@@ -124,6 +147,15 @@ async function recoverFromSessionError(message) {
   clearSession(app.roomId);
   app.session = null;
   await loadSummary();
+  return true;
+}
+
+function recoverFromMissingRoom(message) {
+  if (app.roomId) {
+    clearSession(app.roomId);
+  }
+  app.session = null;
+  showClosedRoom(message);
   return true;
 }
 
@@ -572,6 +604,10 @@ async function sendAction(payload) {
     if (await recoverFromSessionError(error.message)) {
       return;
     }
+    if (error.message.includes("房间不存在")) {
+      recoverFromMissingRoom(error.message);
+      return;
+    }
     setMessage(ui.overlayMessage, error.message, true);
     ui.actionHint.textContent = error.message;
   } finally {
@@ -592,6 +628,10 @@ async function syncPage() {
     }
   } catch (error) {
     if (await recoverFromSessionError(error.message)) {
+      return;
+    }
+    if (error.message.includes("房间不存在")) {
+      recoverFromMissingRoom(error.message);
       return;
     }
     setMessage(ui.overlayMessage, error.message, true);
@@ -631,6 +671,10 @@ ui.startBtn.addEventListener("click", async () => {
     if (await recoverFromSessionError(error.message)) {
       return;
     }
+    if (error.message.includes("房间不存在")) {
+      recoverFromMissingRoom(error.message);
+      return;
+    }
     setMessage(ui.overlayMessage, error.message, true);
   } finally {
     app.startPending = false;
@@ -652,6 +696,10 @@ ui.joinForm.addEventListener("submit", async (event) => {
     joinSubmit.disabled = true;
     await joinRoom(ui.joinName.value);
   } catch (error) {
+    if (error.message.includes("房间不存在")) {
+      recoverFromMissingRoom(error.message);
+      return;
+    }
     setMessage(ui.overlayMessage, error.message, true);
   } finally {
     app.joinPending = false;
