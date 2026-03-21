@@ -502,6 +502,7 @@ def build_share_url(room_id):
 def build_room_summary(room):
     return {
         "roomId": room["id"],
+        "roundNumber": room.get("round_number", 0),
         "phase": room_phase(room),
         "shareUrl": build_share_url(room["id"]),
         "playerCount": len(room["players"]),
@@ -527,6 +528,7 @@ def build_lobby_rooms():
         items.append(
             {
                 "roomId": room["id"],
+                "roundNumber": room.get("round_number", 0),
                 "phase": phase,
                 "status": status,
                 "shareUrl": build_share_url(room["id"]),
@@ -582,6 +584,7 @@ def build_state(room, viewer):
         "roomId": room["id"],
         "phase": room_phase(room),
         "version": room["version"],
+        "roundNumber": room.get("round_number", 0),
         "shareUrl": build_share_url(room["id"]),
         "playerId": viewer["id"],
         "playerName": viewer["name"],
