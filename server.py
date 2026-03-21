@@ -6,11 +6,12 @@ import random
 import socket
 import threading
 import time
+import traceback
 import uuid
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parent
@@ -21,6 +22,9 @@ LAN_IP = "127.0.0.1"
 
 PLAYER_MIN = 3
 PLAYER_MAX = 3
+WAITING_ROOM_TTL = 2 * 60 * 60
+PLAYING_ROOM_TTL = 8 * 60 * 60
+FINISHED_ROOM_TTL = 45 * 60
 CARD_ORDER = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "BJ", "RJ"]
 RANK_WEIGHT = {rank: index + 3 for index, rank in enumerate(CARD_ORDER)}
 SUITS = [
@@ -80,6 +84,22 @@ def touch(room):
 
 def room_phase(room):
     return room["game"]["phase"] if room["game"] else "waiting"
+
+
+def room_ttl(room):
+    phase = room_phase(room)
+    if phase == "waiting":
+        return WAITING_ROOM_TTL
+    if phase == "finished":
+        return FINISHED_ROOM_TTL
+    return PLAYING_ROOM_TTL
+
+
+def cleanup_rooms():
+    current = now()
+    stale_ids = [room_id for room_id, room in ROOMS.items() if current - room["updated_at"] > room_ttl(room)]
+    for room_id in stale_ids:
+        del ROOMS[room_id]
 
 
 def create_room_id():
@@ -393,6 +413,8 @@ def handle_play(room, player_id, card_ids):
         raise ApiError(HTTPStatus.CONFLICT, "还没轮到你出牌。")
     if not isinstance(card_ids, list) or not card_ids:
         raise ApiError(HTTPStatus.BAD_REQUEST, "请先选择要出的牌。")
+    if len(card_ids) != len(set(card_ids)):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "同一张牌不能重复出。")
 
     hand = game["hands"][player_id]
     cards = []
@@ -592,6 +614,13 @@ def read_json(handler):
         raise ApiError(HTTPStatus.BAD_REQUEST, f"请求 JSON 格式错误：{error.msg}")
 
 
+def parse_bid_value(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "叫分只能是 0 到 3。")
+
+
 class DdzHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -615,10 +644,16 @@ class DdzHandler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def log_message(self, format, *args):
-        super().log_message(format, *args)
+        cleaned_args = list(args)
+        if cleaned_args and isinstance(cleaned_args[0], str) and "/api/rooms/" in cleaned_args[0] and "/state?" in cleaned_args[0]:
+            request_line = cleaned_args[0]
+            cleaned_args[0] = f"{request_line.split('?', 1)[0]}?<redacted>"
+        super().log_message(format, *cleaned_args)
 
     def handle_api_get(self):
         try:
+            with ROOM_LOCK:
+                cleanup_rooms()
             parsed = urlparse(self.path)
             if parsed.path == "/api/server-info":
                 self.write_json(
@@ -644,24 +679,17 @@ class DdzHandler(SimpleHTTPRequestHandler):
                 self.write_json(payload)
                 return
 
-            if parsed.path.startswith("/api/rooms/") and parsed.path.endswith("/state"):
-                room_id = parsed.path.split("/")[3]
-                query = parse_qs(parsed.query)
-                player_id = query.get("playerId", [""])[0]
-                token = query.get("token", [""])[0]
-                with ROOM_LOCK:
-                    room = get_room(room_id)
-                    player = get_player(room, player_id, token)
-                    payload = build_state(room, player)
-                self.write_json(payload)
-                return
-
             raise ApiError(HTTPStatus.NOT_FOUND, "接口不存在。")
         except ApiError as error:
             self.write_json({"error": error.message}, status=error.status)
+        except Exception:
+            traceback.print_exc()
+            self.write_json({"error": "服务器内部错误，请稍后再试。"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_api_post(self):
         try:
+            with ROOM_LOCK:
+                cleanup_rooms()
             parsed = urlparse(self.path)
             payload = read_json(self)
 
@@ -692,6 +720,15 @@ class DdzHandler(SimpleHTTPRequestHandler):
                 self.write_json(data, status=HTTPStatus.CREATED)
                 return
 
+            if parsed.path.startswith("/api/rooms/") and parsed.path.endswith("/state"):
+                room_id = parsed.path.split("/")[3]
+                with ROOM_LOCK:
+                    room = get_room(room_id)
+                    player = get_player(room, payload.get("playerId"), payload.get("token"))
+                    data = build_state(room, player)
+                self.write_json(data)
+                return
+
             if parsed.path.startswith("/api/rooms/") and parsed.path.endswith("/start"):
                 room_id = parsed.path.split("/")[3]
                 with ROOM_LOCK:
@@ -715,7 +752,7 @@ class DdzHandler(SimpleHTTPRequestHandler):
                         raise ApiError(HTTPStatus.CONFLICT, "游戏还没有开始。")
                     kind = payload.get("kind")
                     if kind == "bid":
-                        handle_bid(room, player["id"], int(payload.get("bid", -1)))
+                        handle_bid(room, player["id"], parse_bid_value(payload.get("bid", -1)))
                     elif kind == "play":
                         handle_play(room, player["id"], payload.get("cardIds", []))
                     elif kind == "pass":
@@ -735,6 +772,9 @@ class DdzHandler(SimpleHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "接口不存在。")
         except ApiError as error:
             self.write_json({"error": error.message}, status=error.status)
+        except Exception:
+            traceback.print_exc()
+            self.write_json({"error": "服务器内部错误，请稍后再试。"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def write_json(self, payload, status=HTTPStatus.OK):
         content = json.dumps(payload, ensure_ascii=False).encode("utf-8")

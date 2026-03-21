@@ -14,6 +14,7 @@ const {
 } = window.DdzCommon;
 
 const roomId = roomIdFromLocation();
+const LAST_NAME_KEY = "ddz-last-name";
 
 const ui = {
   roomCode: document.getElementById("gameRoomCode"),
@@ -69,6 +70,10 @@ const app = {
   lastRenderedPhase: null,
   dealTimer: null,
   dealCleanupTimer: null,
+  syncInFlight: false,
+  actionPending: false,
+  joinPending: false,
+  startPending: false,
 };
 
 if (!roomId) {
@@ -77,6 +82,49 @@ if (!roomId) {
 
 function setTablePhase(phase) {
   ui.tableFelt.dataset.phase = phase || "waiting";
+}
+
+function loadSavedName() {
+  try {
+    return localStorage.getItem(LAST_NAME_KEY) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function savePreferredName(name) {
+  const value = (name || "").trim();
+  try {
+    if (value) {
+      localStorage.setItem(LAST_NAME_KEY, value);
+    }
+  } catch (_) {}
+}
+
+function stopPolling() {
+  if (app.pollTimer) {
+    window.clearInterval(app.pollTimer);
+    app.pollTimer = null;
+  }
+}
+
+function startPolling() {
+  if (!app.pollTimer) {
+    app.pollTimer = window.setInterval(syncPage, 1200);
+  }
+}
+
+async function recoverFromSessionError(message) {
+  if (!app.session) {
+    return false;
+  }
+  if (!message.includes("身份已失效")) {
+    return false;
+  }
+  clearSession(app.roomId);
+  app.session = null;
+  await loadSummary();
+  return true;
 }
 
 function setStageCopy(badge, prompt, kittyHint) {
@@ -216,7 +264,10 @@ function renderPublicSummary(summary) {
   );
   ui.roomCode.textContent = summary.roomId || "----";
   ui.shareLink.value = summary.shareUrl || window.location.href;
-  ui.statusText.textContent = `当前 ${summary.playerCount}/${summary.capacity} 人，等待开局`;
+  ui.statusText.textContent =
+    summary.phase === "waiting"
+      ? `当前 ${summary.playerCount}/${summary.capacity} 人，等待开局`
+      : "这桌正在进行中";
   ui.overlay.classList.remove("hidden");
   ui.overlayTitle.textContent = summary.canJoin ? "加入牌桌" : summary.phase === "waiting" ? "房间已满" : "牌局进行中";
   ui.overlayDesc.textContent = summary.canJoin
@@ -234,11 +285,11 @@ function renderPublicSummary(summary) {
   ui.trickZone.innerHTML = '<div class="desk-placeholder">牌局尚未开始</div>';
   ui.turnBadge.textContent = "等待开始";
   ui.turnTimer.classList.add("hidden");
-  ui.deskFeed.textContent = summary.canJoin ? "点下面输入昵称后直接坐下。" : "等待房主重新开桌。";
+  ui.deskFeed.textContent = summary.canJoin ? "点下面输入昵称后直接坐下。" : summary.phase === "waiting" ? "等待房主重新开桌。" : "这一桌正在对局中。";
   ui.bidActions.classList.add("hidden");
   ui.playActions.classList.add("hidden");
   ui.playerSummary.textContent = "尚未入座";
-  ui.actionHint.textContent = summary.canJoin ? "加入后会自动留在这个牌桌里等待开局。" : "当前无法加入。";
+  ui.actionHint.textContent = summary.canJoin ? "加入后会自动留在这个牌桌里等待开局。" : summary.phase === "waiting" ? "当前无法加入。" : "可以等待这一局结束后再加入。";
 }
 
 function renderWaitingState(state) {
@@ -254,7 +305,7 @@ function renderWaitingState(state) {
     state.canStart ? "牌桌已坐满" : "等待玩家入座",
     state.canStart
       ? "人已经齐了，房主点开始后会直接发牌。"
-      : "把这个链接发给身边的人，他们点开后会直接来到这张桌子。",
+      : "同一局域网下的人打开首页后，会在大厅里直接看到这张桌子。",
     "开局后会自动发出底牌"
   );
   ui.roomCode.textContent = state.roomId;
@@ -264,7 +315,7 @@ function renderWaitingState(state) {
   ui.overlayDesc.textContent = state.canStart
     ? "现在点击开始游戏，所有人都将在这个牌桌里直接进入对局。"
     : state.players.length < 3
-      ? "房主把这个链接发给身边的人，他们点开后会直接进桌。"
+      ? "同一网络下的人打开首页后，会在大厅里看到这桌并直接加入。"
       : "等待房主开始游戏。";
   ui.joinForm.classList.add("hidden");
   ui.startBtn.classList.toggle("hidden", !state.canStart);
@@ -470,9 +521,10 @@ async function loadSummary() {
 }
 
 async function loadState() {
-  const state = await apiGet(
-    `/api/rooms/${app.roomId}/state?playerId=${encodeURIComponent(app.session.playerId)}&token=${encodeURIComponent(app.session.token)}`,
-  );
+  const state = await apiPost(`/api/rooms/${app.roomId}/state`, {
+    playerId: app.session.playerId,
+    token: app.session.token,
+  });
   if (state.phase === "waiting") {
     renderWaitingState(state);
   } else {
@@ -481,10 +533,11 @@ async function loadState() {
 }
 
 async function joinRoom(name) {
+  savePreferredName(name);
   const payload = await apiPost(`/api/rooms/${app.roomId}/join`, { name });
   saveSession(payload.roomId, payload);
   app.session = payload;
-  await syncPage();
+  await loadState();
 }
 
 async function startGame() {
@@ -503,6 +556,7 @@ async function sendAction(payload) {
     return;
   }
   try {
+    app.actionPending = true;
     const state = await apiPost(`/api/rooms/${app.roomId}/action`, {
       playerId: app.session.playerId,
       token: app.session.token,
@@ -515,12 +569,21 @@ async function sendAction(payload) {
       renderPlayingState(state);
     }
   } catch (error) {
+    if (await recoverFromSessionError(error.message)) {
+      return;
+    }
     setMessage(ui.overlayMessage, error.message, true);
     ui.actionHint.textContent = error.message;
+  } finally {
+    app.actionPending = false;
   }
 }
 
 async function syncPage() {
+  if (app.syncInFlight || app.actionPending || app.joinPending || app.startPending || document.hidden) {
+    return;
+  }
+  app.syncInFlight = true;
   try {
     if (app.session) {
       await loadState();
@@ -528,13 +591,12 @@ async function syncPage() {
       await loadSummary();
     }
   } catch (error) {
-    if (app.session && error.message.includes("身份已失效")) {
-      clearSession(app.roomId);
-      app.session = null;
-      await loadSummary();
+    if (await recoverFromSessionError(error.message)) {
       return;
     }
     setMessage(ui.overlayMessage, error.message, true);
+  } finally {
+    app.syncInFlight = false;
   }
 }
 
@@ -557,30 +619,69 @@ ui.overlayCopyBtn.addEventListener("click", async () => {
 });
 
 ui.overlayHomeBtn.addEventListener("click", () => goHome());
-ui.startBtn.addEventListener("click", () => startGame().catch((error) => setMessage(ui.overlayMessage, error.message, true)));
+ui.startBtn.addEventListener("click", async () => {
+  if (app.startPending) {
+    return;
+  }
+  try {
+    app.startPending = true;
+    ui.startBtn.disabled = true;
+    await startGame();
+  } catch (error) {
+    if (await recoverFromSessionError(error.message)) {
+      return;
+    }
+    setMessage(ui.overlayMessage, error.message, true);
+  } finally {
+    app.startPending = false;
+    if (app.state?.phase === "waiting") {
+      ui.startBtn.disabled = !app.state.canStart;
+    }
+  }
+});
 
 ui.joinForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (app.joinPending) {
+    return;
+  }
   setMessage(ui.overlayMessage, "");
   try {
+    app.joinPending = true;
+    const joinSubmit = ui.joinForm.querySelector("button[type='submit']");
+    joinSubmit.disabled = true;
     await joinRoom(ui.joinName.value);
   } catch (error) {
     setMessage(ui.overlayMessage, error.message, true);
+  } finally {
+    app.joinPending = false;
+    const joinSubmit = ui.joinForm.querySelector("button[type='submit']");
+    joinSubmit.disabled = false;
   }
 });
 
 document.querySelectorAll("[data-bid]").forEach((button) => {
-  button.addEventListener("click", () => sendAction({ kind: "bid", bid: Number(button.dataset.bid) }));
+  button.addEventListener("click", () => {
+    if (app.actionPending) {
+      return;
+    }
+    sendAction({ kind: "bid", bid: Number(button.dataset.bid) });
+  });
 });
 
 ui.playBtn.addEventListener("click", () => {
-  if (!app.selected.length) {
+  if (!app.selected.length || app.actionPending) {
     return;
   }
   sendAction({ kind: "play", cardIds: app.selected });
 });
 
-ui.passBtn.addEventListener("click", () => sendAction({ kind: "pass" }));
+ui.passBtn.addEventListener("click", () => {
+  if (app.actionPending) {
+    return;
+  }
+  sendAction({ kind: "pass" });
+});
 
 ui.clearBtn.addEventListener("click", () => {
   app.selected = [];
@@ -589,10 +690,33 @@ ui.clearBtn.addEventListener("click", () => {
   }
 });
 
-ui.restartBtn.addEventListener("click", () => sendAction({ kind: "restart" }));
+ui.restartBtn.addEventListener("click", () => {
+  if (app.actionPending) {
+    return;
+  }
+  sendAction({ kind: "restart" });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopPolling();
+    return;
+  }
+  syncPage();
+  startPolling();
+});
+
+window.addEventListener("pagehide", () => {
+  stopPolling();
+  if (app.tickTimer) {
+    window.clearInterval(app.tickTimer);
+    app.tickTimer = null;
+  }
+});
 
 ui.roomCode.textContent = app.roomId || "----";
 ui.shareLink.value = window.location.href;
-app.pollTimer = window.setInterval(syncPage, 1200);
+ui.joinName.value = loadSavedName();
+startPolling();
 app.tickTimer = window.setInterval(paintTurnTimer, 250);
 syncPage();

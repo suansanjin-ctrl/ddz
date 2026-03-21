@@ -1,4 +1,4 @@
-const { apiGet, apiPost, saveSession, goToGame, copyText, setMessage, escapeHtml } = window.DdzCommon;
+const { apiGet, apiPost, getSession, saveSession, goToGame, copyText, setMessage, escapeHtml } = window.DdzCommon;
 
 const LAST_NAME_KEY = "ddz-last-name";
 
@@ -13,6 +13,9 @@ const refreshRoomsBtn = document.getElementById("refreshRoomsBtn");
 const homeMessage = document.getElementById("homeMessage");
 
 let roomPollTimer = null;
+let lobbyRequestInFlight = false;
+let createPending = false;
+let joinPendingRoomId = "";
 
 function loadSavedName() {
   try {
@@ -45,7 +48,9 @@ function currentPreferredName() {
 }
 
 function roomCardMarkup(room) {
-  const joinLabel = room.canJoin ? "加入这桌" : room.phase === "waiting" ? "已坐满" : "进行中";
+  const savedSession = getSession(room.roomId);
+  const canResume = Boolean(savedSession);
+  const joinLabel = canResume ? "返回这桌" : room.canJoin ? "加入这桌" : room.phase === "waiting" ? "已坐满" : "进行中";
   return `
     <article class="room-card ${room.canJoin ? "joinable" : "locked"}">
       <div class="room-card-head">
@@ -74,7 +79,7 @@ function roomCardMarkup(room) {
         class="${room.canJoin ? "primary-btn" : "ghost-btn"} room-join-btn"
         type="button"
         data-join-room="${escapeHtml(room.roomId)}"
-        ${room.canJoin ? "" : "disabled"}
+        ${room.canJoin || canResume ? "" : "disabled"}
       >
         ${joinLabel}
       </button>
@@ -103,6 +108,10 @@ function renderRoomList(payload) {
 }
 
 async function loadLobbyRooms(showError = false) {
+  if (lobbyRequestInFlight) {
+    return;
+  }
+  lobbyRequestInFlight = true;
   try {
     const payload = await apiGet("/api/rooms/public");
     renderRoomList(payload);
@@ -117,6 +126,8 @@ async function loadLobbyRooms(showError = false) {
         <span>请确认服务端已经启动，然后再刷新一次。</span>
       </div>
     `;
+  } finally {
+    lobbyRequestInFlight = false;
   }
 }
 
@@ -159,8 +170,14 @@ hallName.addEventListener("input", () => {
 
 createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (createPending) {
+    return;
+  }
   setMessage(homeMessage, "");
   try {
+    createPending = true;
+    const submitButton = createForm.querySelector("button[type='submit']");
+    submitButton.disabled = true;
     const name = createName.value.trim();
     savePreferredName(name);
     const payload = await apiPost("/api/rooms", { name });
@@ -168,12 +185,26 @@ createForm.addEventListener("submit", async (event) => {
     goToGame(payload.roomId);
   } catch (error) {
     setMessage(homeMessage, error.message, true);
+  } finally {
+    createPending = false;
+    const submitButton = createForm.querySelector("button[type='submit']");
+    submitButton.disabled = false;
   }
 });
 
 roomList.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-join-room]");
   if (!button) {
+    return;
+  }
+
+  const roomId = button.dataset.joinRoom;
+  const existingSession = getSession(roomId);
+  if (existingSession) {
+    goToGame(roomId);
+    return;
+  }
+  if (joinPendingRoomId) {
     return;
   }
 
@@ -186,20 +217,45 @@ roomList.addEventListener("click", async (event) => {
 
   setMessage(homeMessage, "");
   try {
+    joinPendingRoomId = roomId;
+    button.disabled = true;
     savePreferredName(name);
-    const roomId = button.dataset.joinRoom;
     const payload = await apiPost(`/api/rooms/${roomId}/join`, { name });
     saveSession(payload.roomId, payload);
     goToGame(payload.roomId);
   } catch (error) {
     setMessage(homeMessage, error.message, true);
     await loadLobbyRooms(false);
+  } finally {
+    joinPendingRoomId = "";
+    button.disabled = false;
   }
 });
 
 refreshRoomsBtn.addEventListener("click", () => {
   setMessage(homeMessage, "");
   loadLobbyRooms(true);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (roomPollTimer) {
+      window.clearInterval(roomPollTimer);
+      roomPollTimer = null;
+    }
+    return;
+  }
+  loadLobbyRooms(false);
+  if (!roomPollTimer) {
+    roomPollTimer = window.setInterval(() => loadLobbyRooms(false), 1800);
+  }
+});
+
+window.addEventListener("pagehide", () => {
+  if (roomPollTimer) {
+    window.clearInterval(roomPollTimer);
+    roomPollTimer = null;
+  }
 });
 
 bootstrapHome();
