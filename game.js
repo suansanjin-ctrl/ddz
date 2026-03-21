@@ -23,6 +23,8 @@ const ui = {
   statusText: document.getElementById("gameStatusText"),
   stageBadge: document.getElementById("stageBadge"),
   stagePrompt: document.getElementById("stagePrompt"),
+  roundBadge: document.getElementById("roundBadge"),
+  baseScoreBadge: document.getElementById("baseScoreBadge"),
   seatLeft: document.getElementById("seatLeft"),
   seatRight: document.getElementById("seatRight"),
   mySeat: document.getElementById("mySeat"),
@@ -33,6 +35,7 @@ const ui = {
   trickZone: document.getElementById("trickZone"),
   turnBadge: document.getElementById("turnBadge"),
   turnTimer: document.getElementById("turnTimer"),
+  centerToast: document.getElementById("centerToast"),
   deskFeed: document.getElementById("deskFeed"),
   overlay: document.getElementById("tableOverlay"),
   overlayTitle: document.getElementById("overlayTitle"),
@@ -74,6 +77,9 @@ const app = {
   actionPending: false,
   joinPending: false,
   startPending: false,
+  previousMeta: null,
+  seatBubbles: {},
+  toastTimer: null,
 };
 
 if (!roomId) {
@@ -82,6 +88,116 @@ if (!roomId) {
 
 function setTablePhase(phase) {
   ui.tableFelt.dataset.phase = phase || "waiting";
+}
+
+function updateDeskHud(roundNumber = 0, baseScore = 1) {
+  ui.roundBadge.textContent = `第 ${roundNumber || 0} 局`;
+  ui.baseScoreBadge.textContent = `${Math.max(1, baseScore || 1)} 倍`;
+}
+
+function showCenterToast(text, accent = "") {
+  window.clearTimeout(app.toastTimer);
+  ui.centerToast.textContent = text;
+  ui.centerToast.className = `center-toast ${accent}`.trim();
+  ui.centerToast.classList.remove("hidden");
+  app.toastTimer = window.setTimeout(() => {
+    ui.centerToast.classList.add("hidden");
+    ui.centerToast.className = "center-toast hidden";
+  }, 1900);
+}
+
+function showSeatBubble(playerId, text) {
+  if (!playerId || !text) {
+    return;
+  }
+  app.seatBubbles[playerId] = {
+    text,
+    expiresAt: Date.now() + 2200,
+  };
+}
+
+function seatBubbleMarkup(playerId) {
+  const bubble = app.seatBubbles[playerId];
+  if (!bubble) {
+    return "";
+  }
+  if (bubble.expiresAt <= Date.now()) {
+    delete app.seatBubbles[playerId];
+    return "";
+  }
+  return `<div class="seat-bubble">${escapeHtml(bubble.text)}</div>`;
+}
+
+function bubbleFromLog(state, line) {
+  if (!line) {
+    return;
+  }
+  const matchedPlayer = state.players.find((player) => line.startsWith(`${player.name} `));
+  if (!matchedPlayer) {
+    return;
+  }
+  if (line.includes("叫分")) {
+    const bubbleText = line.includes("不叫") ? "不叫" : line.split("：").pop();
+    showSeatBubble(matchedPlayer.id, bubbleText);
+    return;
+  }
+  if (line.includes("选择不要")) {
+    showSeatBubble(matchedPlayer.id, "不要");
+    return;
+  }
+  if (line.includes("出牌")) {
+    const comboText = line.match(/（(.+?)）/);
+    showSeatBubble(matchedPlayer.id, comboText ? comboText[1] : "出牌");
+  }
+}
+
+function deriveStateEffects(state) {
+  const currentMeta = {
+    phase: state.phase,
+    highestBid: state.highestBid,
+    landlordPlayerId: state.landlordPlayerId,
+    winnerPlayerId: state.winnerPlayerId,
+    lastPlayKey: state.lastPlay ? `${state.lastPlay.playerId}:${state.lastPlay.comboLabel}:${state.lastPlay.cards.map((card) => card.id).join(",")}` : "",
+    bids: Object.fromEntries(state.players.map((player) => [player.id, player.bid])),
+    logsLength: state.logs.length,
+  };
+  const previous = app.previousMeta;
+
+  if (!previous || previous.phase !== state.phase) {
+    if (state.phase === "bidding") {
+      showCenterToast("开始发牌", "gold");
+    } else if (state.phase === "playing" && state.landlordPlayerId) {
+      const landlord = state.players.find((player) => player.id === state.landlordPlayerId);
+      showCenterToast(`${landlord?.name || "玩家"} 抢到地主`, "gold");
+    } else if (state.phase === "finished" && state.winnerPlayerId) {
+      const winner = state.players.find((player) => player.id === state.winnerPlayerId);
+      showCenterToast(`${winner?.name || "玩家"} 胜利`, "red");
+    }
+  }
+
+  for (const player of state.players) {
+    const previousBid = previous?.bids?.[player.id];
+    if (player.bid !== undefined && player.bid !== null && previousBid !== player.bid) {
+      showSeatBubble(player.id, bidText(player.bid));
+    }
+  }
+
+  if (state.landlordPlayerId && previous?.landlordPlayerId !== state.landlordPlayerId) {
+    showSeatBubble(state.landlordPlayerId, "地主");
+  }
+
+  if (state.lastPlay && previous?.lastPlayKey !== currentMeta.lastPlayKey) {
+    showSeatBubble(state.lastPlay.playerId, state.lastPlay.comboLabel);
+    if (state.lastPlay.comboLabel === "炸弹" || state.lastPlay.comboLabel === "王炸") {
+      showCenterToast(state.lastPlay.comboLabel, "red");
+    }
+  }
+
+  if (previous && state.logs.length > previous.logsLength) {
+    state.logs.slice(previous.logsLength).forEach((line) => bubbleFromLog(state, line));
+  }
+
+  app.previousMeta = currentMeta;
 }
 
 function loadSavedName() {
@@ -117,7 +233,11 @@ function startPolling() {
 function showClosedRoom(message) {
   stopPolling();
   app.turnDeadline = 0;
+  app.previousMeta = null;
+  app.seatBubbles = {};
   ui.turnTimer.classList.add("hidden");
+  ui.centerToast.classList.add("hidden");
+  updateDeskHud(0, 1);
   ui.overlay.classList.remove("hidden");
   ui.overlayTitle.textContent = "这桌已经不可用";
   ui.overlayDesc.textContent = message || "房间可能已经过期、被清理，或者房主已经重新开桌。";
@@ -231,7 +351,9 @@ function seatMarkup(player, options = {}) {
   const count = typeof player.handCount === "number" ? `${player.handCount} 张` : "已入座";
   const turn = options.isTurn ? '<span class="seat-turning">出牌中</span>' : "";
   const landlordFlag = player.isLandlord ? '<span class="landlord-flag">地主</span>' : "";
+  const hostFlag = player.isHost ? '<span class="host-flag">房主</span>' : "";
   const backs = options.showBacks ? seatBacksMarkup(options.backCount ?? player.handCount, options.side) : "";
+  const bubble = seatBubbleMarkup(player.id);
 
   return `
     <div class="seat-card ${options.self ? "self" : ""} ${player.isLandlord ? "landlord" : ""}">
@@ -243,6 +365,8 @@ function seatMarkup(player, options = {}) {
       </div>
       ${backs}
       ${landlordFlag}
+      ${hostFlag}
+      ${bubble}
       ${turn}
     </div>
   `;
@@ -279,6 +403,9 @@ function renderWaitingPlayers(players) {
 
 function renderPublicSummary(summary) {
   app.summary = summary;
+  app.previousMeta = null;
+  app.seatBubbles = {};
+  updateDeskHud(summary.roundNumber || 0, 1);
   const phase = summary.phase === "waiting" ? "waiting" : "playing";
   rememberPhase(phase);
   app.turnDeadline = 0;
@@ -326,6 +453,9 @@ function renderPublicSummary(summary) {
 
 function renderWaitingState(state) {
   app.state = state;
+  app.previousMeta = null;
+  app.seatBubbles = {};
+  updateDeskHud(state.roundNumber || 0, 1);
   rememberPhase("waiting");
   app.turnDeadline = 0;
   app.lastTurnPlayerId = null;
@@ -373,7 +503,9 @@ function renderWaitingState(state) {
 
 function renderPlayingState(state) {
   app.state = state;
+  updateDeskHud(state.roundNumber || 0, state.highestBid || 1);
   rememberPhase(state.phase);
+  deriveStateEffects(state);
   const relative = relativePlayers(state);
   const me = relative.self;
   const turnPlayer = state.players.find((player) => player.id === state.turnPlayerId);
@@ -509,20 +641,26 @@ function paintTurnTimer() {
     return;
   }
   const left = Math.max(0, Math.ceil((app.turnDeadline - Date.now()) / 1000));
+  const progress = Math.max(0, Math.min(1, (app.turnDeadline - Date.now()) / 15000));
   ui.turnTimer.textContent = String(left);
+  ui.turnTimer.style.setProperty("--timer-progress", `${progress}`);
   ui.turnTimer.classList.toggle("danger", left <= 5);
 }
 
 function renderMyHand(cards) {
+  const total = cards.length;
   ui.myHand.innerHTML = cards
     .map((card, index) => {
       const selected = app.selected.includes(card.id) ? "selected" : "";
+      const center = (total - 1) / 2;
+      const angle = (index - center) * 2.4;
+      const shift = Math.abs(index - center) * 1.4;
       return `
         <button
           type="button"
           class="hand-card ${card.color || ""} ${selected}"
           data-card-id="${card.id}"
-          style="--card-index:${index}; z-index:${index + 1}; margin-left:${index === 0 ? 0 : -38}px"
+          style="--card-index:${index}; --card-angle:${angle}deg; --card-drop:${shift}px; z-index:${index + 1}; margin-left:${index === 0 ? 0 : -42}px"
         >
           <span class="hand-corner top">${escapeHtml(card.icon || "")}<strong>${escapeHtml(card.rank)}</strong></span>
           <span class="hand-face">${escapeHtml(card.label)}</span>

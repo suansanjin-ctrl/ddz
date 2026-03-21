@@ -590,6 +590,47 @@ button:disabled {
   font-weight: 700;
 }
 
+.host-flag {
+  position: absolute;
+  right: 12px;
+  top: -10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 233, 177, 0.14);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.seat-bubble {
+  position: absolute;
+  left: 50%;
+  top: -44px;
+  transform: translateX(-50%);
+  min-width: 68px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: rgba(255, 247, 220, 0.96);
+  color: #542f08;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+  animation: seatBubbleIn 0.25s ease;
+  z-index: 3;
+}
+
+.seat-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  background: rgba(255, 247, 220, 0.96);
+  transform: translateX(-50%) rotate(45deg);
+}
+
 .desk-center {
   position: absolute;
   left: 50%;
@@ -606,6 +647,34 @@ button:disabled {
   display: grid;
   gap: 6px;
   justify-items: center;
+}
+
+.desk-hud {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hud-chip {
+  min-width: 108px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: rgba(8, 24, 14, 0.44);
+  border: 1px solid rgba(255, 233, 177, 0.16);
+  display: grid;
+  gap: 4px;
+}
+
+.hud-chip span {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.hud-chip strong {
+  color: #ffeba9;
+  font-size: 18px;
 }
 
 .stage-badge {
@@ -775,6 +844,7 @@ button:disabled {
 }
 
 .turn-timer {
+  --timer-progress: 1;
   width: 54px;
   height: 54px;
   border-radius: 50%;
@@ -783,7 +853,9 @@ button:disabled {
   font-size: 22px;
   font-weight: 700;
   color: #ffecc5;
-  background: rgba(0, 0, 0, 0.28);
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.5) 58%, transparent 60%),
+    conic-gradient(#ffd985 calc(var(--timer-progress) * 1turn), rgba(255, 255, 255, 0.12) 0);
   border: 1px solid rgba(255, 233, 177, 0.22);
 }
 
@@ -791,6 +863,27 @@ button:disabled {
   color: #ffd0c4;
   border-color: rgba(255, 138, 120, 0.48);
   box-shadow: 0 0 22px rgba(255, 82, 52, 0.2);
+}
+
+.center-toast {
+  justify-self: center;
+  min-width: 180px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: rgba(255, 245, 214, 0.96);
+  color: #5b3207;
+  font-size: 24px;
+  font-weight: 700;
+  box-shadow: 0 20px 32px rgba(0, 0, 0, 0.18);
+  animation: centerToastIn 0.22s ease;
+}
+
+.center-toast.gold {
+  background: linear-gradient(180deg, #ffe7a7 0%, #f7c85d 100%);
+}
+
+.center-toast.red {
+  background: linear-gradient(180deg, #ffd7cf 0%, #ff9f89 100%);
 }
 
 .desk-feed {
@@ -936,6 +1029,7 @@ button:disabled {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .call-btn {
@@ -965,6 +1059,7 @@ button:disabled {
   align-items: flex-end;
   justify-content: center;
   overflow-x: auto;
+  overflow-y: visible;
 }
 
 .hand-card {
@@ -980,8 +1075,9 @@ button:disabled {
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: 12px;
-  transition: transform 0.14s ease, box-shadow 0.14s ease;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, margin-top 0.14s ease;
   transform-origin: center bottom;
+  transform: translateY(var(--card-drop, 0px)) rotate(var(--card-angle, 0deg));
 }
 
 .hand-card.red {
@@ -989,12 +1085,12 @@ button:disabled {
 }
 
 .hand-card:hover {
-  transform: translateY(-8px);
+  transform: translateY(calc(var(--card-drop, 0px) - 12px)) rotate(var(--card-angle, 0deg));
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.28);
 }
 
 .hand-card.selected {
-  transform: translateY(-24px);
+  transform: translateY(calc(var(--card-drop, 0px) - 28px)) rotate(var(--card-angle, 0deg));
 }
 
 .qq-hand.dealing .hand-card {
@@ -1078,6 +1174,30 @@ button:disabled {
   }
 }
 
+@keyframes centerToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes seatBubbleIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
 @media (max-width: 1024px) {
   .feature-row,
   .entry-grid,
@@ -1130,6 +1250,14 @@ button:disabled {
   .desk-section-head {
     flex-direction: column;
     align-items: center;
+  }
+
+  .desk-hud {
+    justify-content: stretch;
+  }
+
+  .hud-chip {
+    flex: 1 1 0;
   }
 
   .qq-hand {

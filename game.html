@@ -31,6 +31,16 @@
               <span id="stageBadge" class="stage-badge">牌桌准备中</span>
               <strong id="stagePrompt" class="stage-prompt">房主把链接发出去，其他人点开就会直接进桌。</strong>
             </div>
+            <div class="desk-hud">
+              <div class="hud-chip">
+                <span>局数</span>
+                <strong id="roundBadge">第 0 局</strong>
+              </div>
+              <div class="hud-chip">
+                <span>底分</span>
+                <strong id="baseScoreBadge">1 倍</strong>
+              </div>
+            </div>
             <div class="desk-pill" id="gameStatusText">正在连接牌桌...</div>
             <div id="deckDock" class="deck-dock">
               <div class="deck-stack" aria-hidden="true">
@@ -55,6 +65,7 @@
               <div class="desk-turn" id="turnBadge">等待开始</div>
               <div class="turn-timer hidden" id="turnTimer">15</div>
             </div>
+            <div id="centerToast" class="center-toast hidden"></div>
             <div id="deskFeed" class="desk-feed"></div>
           </div>
 
