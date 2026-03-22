@@ -120,6 +120,46 @@ def run_cleanup_unit_check():
     server.ROOMS.clear()
 
 
+def run_scoring_unit_check():
+    import server
+
+    room, host = server.create_room("房主")
+    player_b = server.join_room(room, "玩家B")
+    player_c = server.join_room(room, "玩家C")
+    room["game"] = {
+        "phase": "finished",
+        "order": [host["id"], player_b["id"], player_c["id"]],
+        "turn": host["id"],
+        "hands": {},
+        "bids": {},
+        "highest_bid": 2,
+        "highest_bidder": host["id"],
+        "bomb_count": 1,
+        "multiplier": 4,
+        "landlord": host["id"],
+        "kitty": [],
+        "last_play": None,
+        "trick_leader": host["id"],
+        "pass_count": 0,
+        "winner": host["id"],
+        "winner_side": "地主",
+        "score_changes": {},
+        "scored": False,
+        "logs": [],
+        "bid_sequence": [],
+        "bid_turn_index": 0,
+        "started_at": server.now(),
+    }
+
+    server.settle_finished_round(room, host["id"])
+    assert_true(room["stats"][host["id"]]["score"] == 8, "地主胜利计分错误")
+    assert_true(room["stats"][player_b["id"]]["score"] == -4, "农民扣分错误")
+    assert_true(room["stats"][player_c["id"]]["score"] == -4, "农民扣分错误")
+    assert_true(room["stats"][host["id"]]["wins"] == 1, "地主胜场没有累计")
+    assert_true(room["game"]["score_changes"][host["id"]] == 8, "本局分数变化记录错误")
+    server.ROOMS.clear()
+
+
 def run_api_checks(base):
     status, host = request(base, "POST", "/api/rooms", {"name": "房主A"})
     assert_true(status == 201, "创建房间失败")
@@ -157,6 +197,7 @@ def run_api_checks(base):
         {"playerId": host["playerId"], "token": host["token"]},
     )
     assert_true(status == 200 and state["phase"] == "bidding", "开局后没有进入 bidding")
+    assert_true(state["baseScore"] == 1 and state["multiplier"] == 1, "开局基础倍数状态错误")
 
     status, post_state = request(
         base,
@@ -200,6 +241,7 @@ def run_api_checks(base):
         },
     )
     assert_true(status == 200 and play_state["phase"] == "playing", "3 分抢地主后没有进入出牌阶段")
+    assert_true(play_state["multiplier"] == 3 and play_state["baseScore"] == 3, "叫到 3 分后倍数状态错误")
 
     landlord = players[play_state["landlordPlayerId"]]
     status, landlord_state = request(
@@ -230,6 +272,7 @@ def run_api_checks(base):
 def main():
     run_cleanup_unit_check()
     run_rule_checks()
+    run_scoring_unit_check()
 
     port = pick_free_port()
     process = subprocess.Popen(

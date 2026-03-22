@@ -14,6 +14,7 @@
           <strong>房间 <span id="gameRoomCode">----</span></strong>
         </div>
         <div class="table-tools">
+          <button id="soundToggleBtn" class="top-btn" type="button">音效开</button>
           <button id="copyLinkBtn" class="top-btn" type="button">复制直达牌桌链接</button>
           <a class="top-btn" href="./index.html">返回首页</a>
         </div>
@@ -37,7 +38,7 @@
                 <strong id="roundBadge">第 0 局</strong>
               </div>
               <div class="hud-chip">
-                <span>底分</span>
+                <span>倍数</span>
                 <strong id="baseScoreBadge">1 倍</strong>
               </div>
             </div>
@@ -70,6 +71,22 @@
           </div>
 
           <div id="mySeat" class="seat-badge seat-bottom"></div>
+          <div id="impactFlash" class="impact-flash hidden"></div>
+          <div id="stageAnnouncement" class="stage-announcement hidden"></div>
+
+          <div id="resultPanel" class="result-panel hidden">
+            <div id="resultCard" class="result-card">
+              <p class="result-kicker">本局结算</p>
+              <h2 id="resultTitle">等待本局结束</h2>
+              <p id="resultMeta" class="result-meta"></p>
+              <div id="resultScoreboard" class="result-scoreboard"></div>
+              <div id="resultLogs" class="result-logs"></div>
+              <div class="result-actions">
+                <button id="resultRestartBtn" class="primary-cta hidden" type="button">再来一局</button>
+                <a class="ghost-cta" href="./index.html">返回大厅</a>
+              </div>
+            </div>
+          </div>
 
           <div id="tableOverlay" class="table-overlay">
             <div class="overlay-panel">

@@ -15,9 +15,11 @@ const {
 
 const roomId = roomIdFromLocation();
 const LAST_NAME_KEY = "ddz-last-name";
+const AUDIO_PREF_KEY = "ddz-audio-enabled";
 
 const ui = {
   roomCode: document.getElementById("gameRoomCode"),
+  soundToggleBtn: document.getElementById("soundToggleBtn"),
   copyLinkBtn: document.getElementById("copyLinkBtn"),
   tableFelt: document.querySelector(".table-felt"),
   statusText: document.getElementById("gameStatusText"),
@@ -28,6 +30,15 @@ const ui = {
   seatLeft: document.getElementById("seatLeft"),
   seatRight: document.getElementById("seatRight"),
   mySeat: document.getElementById("mySeat"),
+  impactFlash: document.getElementById("impactFlash"),
+  stageAnnouncement: document.getElementById("stageAnnouncement"),
+  resultPanel: document.getElementById("resultPanel"),
+  resultCard: document.getElementById("resultCard"),
+  resultTitle: document.getElementById("resultTitle"),
+  resultMeta: document.getElementById("resultMeta"),
+  resultScoreboard: document.getElementById("resultScoreboard"),
+  resultLogs: document.getElementById("resultLogs"),
+  resultRestartBtn: document.getElementById("resultRestartBtn"),
   deckDock: document.getElementById("deckDock"),
   dealBanner: document.getElementById("dealBanner"),
   kittyZone: document.getElementById("kittyZone"),
@@ -57,6 +68,7 @@ const ui = {
   clearBtn: document.getElementById("clearBtn"),
   restartBtn: document.getElementById("restartBtn"),
   myHand: document.getElementById("myHand"),
+  actionStrip: document.querySelector(".action-strip"),
 };
 
 const app = {
@@ -80,19 +92,52 @@ const app = {
   previousMeta: null,
   seatBubbles: {},
   toastTimer: null,
+  announcementTimer: null,
+  impactTimer: null,
+  audioContext: null,
+  audioUnlocked: false,
+  audioEnabled: loadAudioPreference(),
 };
 
 if (!roomId) {
   goHome();
 }
 
+function loadAudioPreference() {
+  try {
+    const saved = localStorage.getItem(AUDIO_PREF_KEY);
+    if (saved === null) {
+      return true;
+    }
+    return saved !== "0";
+  } catch (_) {
+    return true;
+  }
+}
+
+function saveAudioPreference(enabled) {
+  try {
+    localStorage.setItem(AUDIO_PREF_KEY, enabled ? "1" : "0");
+  } catch (_) {}
+}
+
+function renderAudioToggle() {
+  ui.soundToggleBtn.textContent = app.audioEnabled ? "音效开" : "音效关";
+  ui.soundToggleBtn.classList.toggle("is-muted", !app.audioEnabled);
+}
+
 function setTablePhase(phase) {
   ui.tableFelt.dataset.phase = phase || "waiting";
 }
 
-function updateDeskHud(roundNumber = 0, baseScore = 1) {
+function formatSignedScore(value) {
+  const safe = Number(value || 0);
+  return `${safe > 0 ? "+" : ""}${safe}`;
+}
+
+function updateDeskHud(roundNumber = 0, multiplier = 1, bombCount = 0) {
   ui.roundBadge.textContent = `第 ${roundNumber || 0} 局`;
-  ui.baseScoreBadge.textContent = `${Math.max(1, baseScore || 1)} 倍`;
+  ui.baseScoreBadge.textContent = `${Math.max(1, multiplier || 1)} 倍${bombCount ? ` · ${bombCount} 炸` : ""}`;
 }
 
 function showCenterToast(text, accent = "") {
@@ -104,6 +149,106 @@ function showCenterToast(text, accent = "") {
     ui.centerToast.classList.add("hidden");
     ui.centerToast.className = "center-toast hidden";
   }, 1900);
+}
+
+function showStageAnnouncement(text, tone = "") {
+  window.clearTimeout(app.announcementTimer);
+  ui.stageAnnouncement.textContent = text;
+  ui.stageAnnouncement.className = `stage-announcement ${tone}`.trim();
+  ui.stageAnnouncement.classList.remove("hidden");
+  app.announcementTimer = window.setTimeout(() => {
+    ui.stageAnnouncement.className = "stage-announcement hidden";
+  }, 1450);
+}
+
+function triggerImpact(kind = "bomb") {
+  window.clearTimeout(app.impactTimer);
+  ui.impactFlash.className = `impact-flash ${kind}`.trim();
+  ui.impactFlash.classList.remove("hidden");
+  app.impactTimer = window.setTimeout(() => {
+    ui.impactFlash.className = "impact-flash hidden";
+  }, 560);
+}
+
+function ensureAudioContext() {
+  if (!window.AudioContext && !window.webkitAudioContext) {
+    return null;
+  }
+  if (!app.audioContext) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    app.audioContext = new AudioCtx();
+  }
+  return app.audioContext;
+}
+
+async function unlockAudio() {
+  const context = ensureAudioContext();
+  if (!context) {
+    return;
+  }
+  if (context.state === "suspended") {
+    await context.resume();
+  }
+  app.audioUnlocked = true;
+}
+
+function playTone(frequency, duration, options = {}) {
+  const context = ensureAudioContext();
+  if (!context || !app.audioUnlocked || !app.audioEnabled) {
+    return;
+  }
+  const start = context.currentTime + (options.delay || 0);
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+  oscillator.type = options.type || "sine";
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gainNode.gain.setValueAtTime(0.0001, start);
+  gainNode.gain.exponentialRampToValueAtTime(options.gain || 0.045, start + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gainNode);
+  gainNode.connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function playCue(kind) {
+  switch (kind) {
+    case "deal":
+      playTone(540, 0.08, { type: "triangle", gain: 0.035 });
+      playTone(720, 0.08, { type: "triangle", gain: 0.03, delay: 0.09 });
+      playTone(900, 0.08, { type: "triangle", gain: 0.028, delay: 0.18 });
+      break;
+    case "bid":
+      playTone(620, 0.09, { type: "triangle", gain: 0.035 });
+      playTone(760, 0.12, { type: "triangle", gain: 0.03, delay: 0.1 });
+      break;
+    case "pass":
+      playTone(340, 0.12, { type: "sawtooth", gain: 0.025 });
+      break;
+    case "play":
+      playTone(680, 0.08, { type: "square", gain: 0.03 });
+      break;
+    case "bomb":
+      playTone(180, 0.16, { type: "sawtooth", gain: 0.05 });
+      playTone(110, 0.24, { type: "triangle", gain: 0.04, delay: 0.08 });
+      break;
+    case "landlord":
+      playTone(520, 0.1, { type: "triangle", gain: 0.035 });
+      playTone(780, 0.14, { type: "triangle", gain: 0.035, delay: 0.09 });
+      playTone(1040, 0.16, { type: "triangle", gain: 0.03, delay: 0.2 });
+      break;
+    case "win":
+      playTone(660, 0.12, { type: "triangle", gain: 0.03 });
+      playTone(880, 0.12, { type: "triangle", gain: 0.03, delay: 0.12 });
+      playTone(1180, 0.18, { type: "triangle", gain: 0.028, delay: 0.24 });
+      break;
+    case "lose":
+      playTone(420, 0.12, { type: "sine", gain: 0.03 });
+      playTone(310, 0.18, { type: "sine", gain: 0.028, delay: 0.12 });
+      break;
+    default:
+      break;
+  }
 }
 
 function showSeatBubble(playerId, text) {
@@ -166,12 +311,19 @@ function deriveStateEffects(state) {
   if (!previous || previous.phase !== state.phase) {
     if (state.phase === "bidding") {
       showCenterToast("开始发牌", "gold");
+      showStageAnnouncement("发牌", "gold");
+      playCue("deal");
     } else if (state.phase === "playing" && state.landlordPlayerId) {
       const landlord = state.players.find((player) => player.id === state.landlordPlayerId);
       showCenterToast(`${landlord?.name || "玩家"} 抢到地主`, "gold");
+      showStageAnnouncement("地主", "gold");
+      triggerImpact("landlord");
+      playCue("landlord");
     } else if (state.phase === "finished" && state.winnerPlayerId) {
       const winner = state.players.find((player) => player.id === state.winnerPlayerId);
       showCenterToast(`${winner?.name || "玩家"} 胜利`, "red");
+      showStageAnnouncement(state.winnerPlayerId === state.playerId ? "胜利" : "失败", state.winnerPlayerId === state.playerId ? "win" : "lose");
+      playCue(state.winnerPlayerId === state.playerId ? "win" : "lose");
     }
   }
 
@@ -179,6 +331,7 @@ function deriveStateEffects(state) {
     const previousBid = previous?.bids?.[player.id];
     if (player.bid !== undefined && player.bid !== null && previousBid !== player.bid) {
       showSeatBubble(player.id, bidText(player.bid));
+      playCue("bid");
     }
   }
 
@@ -190,11 +343,19 @@ function deriveStateEffects(state) {
     showSeatBubble(state.lastPlay.playerId, state.lastPlay.comboLabel);
     if (state.lastPlay.comboLabel === "炸弹" || state.lastPlay.comboLabel === "王炸") {
       showCenterToast(state.lastPlay.comboLabel, "red");
+      showStageAnnouncement(state.lastPlay.comboLabel, "bomb");
+      triggerImpact("bomb");
+      playCue("bomb");
+    } else {
+      playCue("play");
     }
   }
 
   if (previous && state.logs.length > previous.logsLength) {
     state.logs.slice(previous.logsLength).forEach((line) => bubbleFromLog(state, line));
+    if (state.logs.slice(previous.logsLength).some((line) => line.includes("选择不要"))) {
+      playCue("pass");
+    }
   }
 
   app.previousMeta = currentMeta;
@@ -237,7 +398,10 @@ function showClosedRoom(message) {
   app.seatBubbles = {};
   ui.turnTimer.classList.add("hidden");
   ui.centerToast.classList.add("hidden");
-  updateDeskHud(0, 1);
+  ui.stageAnnouncement.className = "stage-announcement hidden";
+  ui.impactFlash.className = "impact-flash hidden";
+  updateDeskHud(0, 1, 0);
+  ui.resultPanel.classList.add("hidden");
   ui.overlay.classList.remove("hidden");
   ui.overlayTitle.textContent = "这桌已经不可用";
   ui.overlayDesc.textContent = message || "房间可能已经过期、被清理，或者房主已经重新开桌。";
@@ -252,6 +416,10 @@ function showClosedRoom(message) {
   ui.deskFeed.textContent = "返回首页后，可以重新进入其他牌桌。";
   ui.bidActions.classList.add("hidden");
   ui.playActions.classList.add("hidden");
+  ui.bidActions.classList.remove("active");
+  ui.playActions.classList.remove("active", "finished");
+  ui.actionStrip.classList.remove("is-my-turn", "is-finished");
+  ui.restartBtn.classList.add("hidden");
   ui.playerSummary.textContent = "当前没有可用牌桌";
   ui.actionHint.textContent = "请返回首页，从局域网大厅重新选择牌桌。";
   setMessage(ui.overlayMessage, message || "房间已失效。", true);
@@ -277,6 +445,40 @@ function recoverFromMissingRoom(message) {
   app.session = null;
   showClosedRoom(message);
   return true;
+}
+
+function renderResultPanel(state, winner, landlord) {
+  if (state.phase !== "finished") {
+    ui.resultPanel.classList.add("hidden");
+    return;
+  }
+  const landlordWon = winner && winner.id === state.landlordPlayerId;
+  const selfWon = winner && winner.id === state.playerId;
+  ui.resultPanel.classList.remove("hidden");
+  ui.resultCard.classList.toggle("is-win", Boolean(selfWon));
+  ui.resultCard.classList.toggle("is-lose", !selfWon);
+  ui.resultTitle.textContent = landlordWon ? "地主胜利" : "农民胜利";
+  ui.resultMeta.textContent = `${winner?.name || "玩家"} 获胜 · 地主 ${landlord?.name || "待定"} · 底分 ${state.baseScore || 1} · 当前 ${state.multiplier || 1} 倍${state.bombCount ? ` · ${state.bombCount} 炸` : ""}`;
+  ui.resultScoreboard.innerHTML = state.players
+    .map((player) => {
+      const delta = Number(state.scoreChanges?.[player.id] || 0);
+      return `
+        <div class="result-score-row ${player.id === state.winnerPlayerId ? "winner" : ""}">
+          <div>
+            <strong>${escapeHtml(player.name)}${player.isLandlord ? " · 地主" : ""}</strong>
+            <span>总分 ${escapeHtml(formatSignedScore(player.score))} · ${escapeHtml(String(player.wins || 0))} 胜</span>
+          </div>
+          <b class="${delta >= 0 ? "positive" : "negative"}">${escapeHtml(formatSignedScore(delta))}</b>
+        </div>
+      `;
+    })
+    .join("");
+  ui.resultLogs.innerHTML = state.logs
+    .slice(-5)
+    .map((line) => `<div class="result-log-line">${escapeHtml(line)}</div>`)
+    .join("");
+  ui.resultRestartBtn.classList.toggle("hidden", !state.canRestart);
+  ui.resultRestartBtn.disabled = !state.canRestart;
 }
 
 function setStageCopy(badge, prompt, kittyHint) {
@@ -349,9 +551,19 @@ function seatMarkup(player, options = {}) {
   const role = player.isLandlord ? "地主" : player.isSelf ? "你" : "玩家";
   const bid = player.bid === undefined ? "" : bidText(player.bid);
   const count = typeof player.handCount === "number" ? `${player.handCount} 张` : "已入座";
+  const scoreSummary =
+    typeof player.score === "number" && typeof player.wins === "number"
+      ? `总分 ${formatSignedScore(player.score)} · ${player.wins} 胜`
+      : count;
+  const seatDetail =
+    typeof player.score === "number" && typeof player.wins === "number" ? `${count} · ${scoreSummary}` : count;
   const turn = options.isTurn ? '<span class="seat-turning">出牌中</span>' : "";
   const landlordFlag = player.isLandlord ? '<span class="landlord-flag">地主</span>' : "";
   const hostFlag = player.isHost ? '<span class="host-flag">房主</span>' : "";
+  const scoreDelta =
+    typeof options.scoreDelta === "number"
+      ? `<span class="seat-score-delta ${options.scoreDelta >= 0 ? "positive" : "negative"}">${escapeHtml(formatSignedScore(options.scoreDelta))}</span>`
+      : "";
   const backs = options.showBacks ? seatBacksMarkup(options.backCount ?? player.handCount, options.side) : "";
   const bubble = seatBubbleMarkup(player.id);
 
@@ -361,8 +573,9 @@ function seatMarkup(player, options = {}) {
       <div class="seat-meta">
         <strong>${escapeHtml(player.name)}</strong>
         <span>${escapeHtml(role)}${bid ? ` · ${escapeHtml(bid)}` : ""}</span>
-        <em>${escapeHtml(count)}</em>
+        <em>${escapeHtml(seatDetail)}</em>
       </div>
+      ${scoreDelta}
       ${backs}
       ${landlordFlag}
       ${hostFlag}
@@ -405,7 +618,9 @@ function renderPublicSummary(summary) {
   app.summary = summary;
   app.previousMeta = null;
   app.seatBubbles = {};
-  updateDeskHud(summary.roundNumber || 0, 1);
+  ui.stageAnnouncement.className = "stage-announcement hidden";
+  ui.impactFlash.className = "impact-flash hidden";
+  updateDeskHud(summary.roundNumber || 0, 1, 0);
   const phase = summary.phase === "waiting" ? "waiting" : "playing";
   rememberPhase(phase);
   app.turnDeadline = 0;
@@ -447,15 +662,22 @@ function renderPublicSummary(summary) {
   ui.deskFeed.textContent = summary.canJoin ? "点下面输入昵称后直接坐下。" : summary.phase === "waiting" ? "等待房主重新开桌。" : "这一桌正在对局中。";
   ui.bidActions.classList.add("hidden");
   ui.playActions.classList.add("hidden");
+  ui.bidActions.classList.remove("active");
+  ui.playActions.classList.remove("active", "finished");
+  ui.actionStrip.classList.remove("is-my-turn", "is-finished");
+  ui.restartBtn.classList.add("hidden");
   ui.playerSummary.textContent = "尚未入座";
   ui.actionHint.textContent = summary.canJoin ? "加入后会自动留在这个牌桌里等待开局。" : summary.phase === "waiting" ? "当前无法加入。" : "可以等待这一局结束后再加入。";
+  ui.resultPanel.classList.add("hidden");
 }
 
 function renderWaitingState(state) {
   app.state = state;
   app.previousMeta = null;
   app.seatBubbles = {};
-  updateDeskHud(state.roundNumber || 0, 1);
+  ui.stageAnnouncement.className = "stage-announcement hidden";
+  ui.impactFlash.className = "impact-flash hidden";
+  updateDeskHud(state.roundNumber || 0, 1, 0);
   rememberPhase("waiting");
   app.turnDeadline = 0;
   app.lastTurnPlayerId = null;
@@ -496,14 +718,19 @@ function renderWaitingState(state) {
   ui.deskFeed.textContent = state.canStart ? "满 3 人了，点击开始。" : "链接已分享后，其他人点开即可直接入座。";
   ui.bidActions.classList.add("hidden");
   ui.playActions.classList.add("hidden");
+  ui.bidActions.classList.remove("active");
+  ui.playActions.classList.remove("active", "finished");
+  ui.actionStrip.classList.remove("is-my-turn", "is-finished");
+  ui.restartBtn.classList.add("hidden");
   ui.playerSummary.textContent = `${me?.name || "你"} 已入座`;
   ui.actionHint.textContent = state.canStart ? "你是房主，可以直接开局。" : "等待房主开始游戏。";
   ui.restartBtn.disabled = true;
+  ui.resultPanel.classList.add("hidden");
 }
 
 function renderPlayingState(state) {
   app.state = state;
-  updateDeskHud(state.roundNumber || 0, state.highestBid || 1);
+  updateDeskHud(state.roundNumber || 0, state.multiplier || 1, state.bombCount || 0);
   rememberPhase(state.phase);
   deriveStateEffects(state);
   const relative = relativePlayers(state);
@@ -522,10 +749,10 @@ function renderPlayingState(state) {
   ui.shareLink.value = state.shareUrl;
   ui.statusText.textContent =
     state.phase === "bidding"
-      ? `抢地主中 · 当前最高 ${state.highestBid} 分`
+      ? `抢地主中 · 当前最高 ${state.highestBid} 分 · ${state.multiplier || 1} 倍`
       : state.phase === "finished"
-        ? `${winner?.name || "玩家"} 获胜`
-        : `地主：${landlord?.name || "待定"}`;
+        ? `${winner?.name || "玩家"} 获胜 · ${state.multiplier || 1} 倍`
+        : `地主：${landlord?.name || "待定"} · ${state.multiplier || 1} 倍`;
 
   if (state.phase === "bidding") {
     setStageCopy(
@@ -558,6 +785,7 @@ function renderPlayingState(state) {
     showBacks: state.phase !== "waiting",
     backCount: relative.left?.handCount,
     side: "left",
+    scoreDelta: state.phase === "finished" ? state.scoreChanges?.[relative.left?.id] : null,
   });
   ui.seatRight.innerHTML = seatMarkup(relative.right, {
     placeholder: "等待右侧玩家",
@@ -565,11 +793,13 @@ function renderPlayingState(state) {
     showBacks: state.phase !== "waiting",
     backCount: relative.right?.handCount,
     side: "right",
+    scoreDelta: state.phase === "finished" ? state.scoreChanges?.[relative.right?.id] : null,
   });
   ui.mySeat.innerHTML = seatMarkup(me, {
     self: true,
     placeholder: "你的位置",
     isTurn: state.turnPlayerId === me?.id,
+    scoreDelta: state.phase === "finished" ? state.scoreChanges?.[me?.id] : null,
   });
 
   ui.kittyZone.innerHTML = playedCardsMarkup(state.kitty);
@@ -600,10 +830,19 @@ function renderPlayingState(state) {
   ui.playerSummary.textContent = `${me?.name || "你"} · ${state.myHand.length} 张手牌`;
   ui.bidActions.classList.toggle("hidden", !(state.phase === "bidding" && isMyTurn));
   ui.playActions.classList.toggle("hidden", !(state.phase === "playing" || state.phase === "finished"));
+  ui.bidActions.classList.toggle("active", state.phase === "bidding" && isMyTurn);
+  ui.playActions.classList.toggle("active", state.phase === "playing" && isMyTurn);
+  ui.playActions.classList.toggle("finished", state.phase === "finished");
+  ui.actionStrip.classList.toggle("is-my-turn", state.phase !== "finished" && isMyTurn);
+  ui.actionStrip.classList.toggle("is-finished", state.phase === "finished");
   ui.playBtn.disabled = !(state.phase === "playing" && isMyTurn && app.selected.length);
   ui.passBtn.disabled = !(state.phase === "playing" && isMyTurn && state.lastPlay && state.lastPlay.playerId !== state.playerId);
   ui.clearBtn.disabled = !app.selected.length;
   ui.restartBtn.disabled = !state.canRestart;
+  ui.playBtn.classList.toggle("hidden", state.phase !== "playing");
+  ui.passBtn.classList.toggle("hidden", state.phase !== "playing");
+  ui.clearBtn.classList.toggle("hidden", state.phase !== "playing");
+  ui.restartBtn.classList.toggle("hidden", state.phase !== "finished");
 
   if (state.phase === "bidding") {
     ui.actionHint.textContent = isMyTurn ? "轮到你叫分。" : "等待其他玩家叫分。";
@@ -617,6 +856,7 @@ function renderPlayingState(state) {
     ui.actionHint.textContent = state.canRestart ? "你可以点击“再来一局”。" : "等待房主开始下一局。";
   }
 
+  renderResultPanel(state, winner, landlord);
   renderMyHand(state.myHand);
 }
 
@@ -797,6 +1037,27 @@ ui.overlayCopyBtn.addEventListener("click", async () => {
 });
 
 ui.overlayHomeBtn.addEventListener("click", () => goHome());
+ui.soundToggleBtn.addEventListener("click", async () => {
+  app.audioEnabled = !app.audioEnabled;
+  saveAudioPreference(app.audioEnabled);
+  renderAudioToggle();
+  if (app.audioEnabled) {
+    try {
+      await unlockAudio();
+      playCue("deal");
+    } catch (_) {}
+    ui.actionHint.textContent = "音效已开启。";
+  } else {
+    ui.actionHint.textContent = "音效已关闭。";
+  }
+});
+document.addEventListener(
+  "pointerdown",
+  () => {
+    unlockAudio().catch(() => {});
+  },
+  { once: true },
+);
 ui.startBtn.addEventListener("click", async () => {
   if (app.startPending) {
     return;
@@ -882,6 +1143,12 @@ ui.restartBtn.addEventListener("click", () => {
   }
   sendAction({ kind: "restart" });
 });
+ui.resultRestartBtn.addEventListener("click", () => {
+  if (app.actionPending) {
+    return;
+  }
+  sendAction({ kind: "restart" });
+});
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -903,6 +1170,7 @@ window.addEventListener("pagehide", () => {
 ui.roomCode.textContent = app.roomId || "----";
 ui.shareLink.value = window.location.href;
 ui.joinName.value = loadSavedName();
+renderAudioToggle();
 startPolling();
 app.tickTimer = window.setInterval(paintTurnTimer, 250);
 syncPage();

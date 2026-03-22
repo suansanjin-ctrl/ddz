@@ -119,6 +119,20 @@ def create_player(name):
     }
 
 
+def default_player_stats():
+    return {
+        "score": 0,
+        "wins": 0,
+        "landlord_wins": 0,
+        "farmer_wins": 0,
+    }
+
+
+def get_player_stats(room, player_id):
+    room.setdefault("stats", {})
+    return room["stats"].setdefault(player_id, default_player_stats())
+
+
 def create_card(rank, suit_key, suit_icon, color, index):
     label = f"{suit_icon}{rank}" if suit_icon else ("小王" if rank == "BJ" else "大王")
     return {
@@ -282,6 +296,13 @@ def describe_cards(cards):
     return " ".join(card["label"] for card in sort_cards(cards))
 
 
+def current_multiplier(game):
+    if not game:
+        return 1
+    base_score = max(1, game.get("highest_bid") or 1)
+    return base_score * (2 ** game.get("bomb_count", 0))
+
+
 def player_name(room, player_id):
     for player in room["players"]:
         if player["id"] == player_id:
@@ -320,6 +341,8 @@ def start_round(room, opening_message=None):
         "bids": {player_id: None for player_id in order},
         "highest_bid": 0,
         "highest_bidder": None,
+        "bomb_count": 0,
+        "multiplier": 1,
         "landlord": None,
         "kitty": kitty,
         "last_play": None,
@@ -327,6 +350,8 @@ def start_round(room, opening_message=None):
         "pass_count": 0,
         "winner": None,
         "winner_side": None,
+        "score_changes": {},
+        "scored": False,
         "logs": logs,
         "bid_sequence": bid_sequence,
         "bid_turn_index": 0,
@@ -349,6 +374,7 @@ def finalize_bidding(room, landlord_id=None):
     game["pass_count"] = 0
     game["last_play"] = None
     game["hands"][landlord] = sort_cards(game["hands"][landlord] + game["kitty"])
+    game["multiplier"] = current_multiplier(game)
     game["logs"].append(f"{player_name(room, landlord)} 成为地主，底牌加入手牌。")
     touch(room)
 
@@ -368,6 +394,7 @@ def handle_bid(room, player_id, bid):
     if bid > game["highest_bid"]:
         game["highest_bid"] = bid
         game["highest_bidder"] = player_id
+        game["multiplier"] = current_multiplier(game)
 
     if bid == 3:
         finalize_bidding(room, player_id)
@@ -443,14 +470,50 @@ def handle_play(room, player_id, card_ids):
     game["pass_count"] = 0
     game["logs"].append(f"{player_name(room, player_id)} 出牌：{describe_cards(cards)}（{combo['label']}）")
 
+    if combo["type"] in ("bomb", "rocket"):
+        game["bomb_count"] += 1
+        game["multiplier"] = current_multiplier(game)
+        game["logs"].append(f"炸弹翻倍，当前倍数 {game['multiplier']} 倍。")
+
     if not remaining:
         game["phase"] = "finished"
         game["winner"] = player_id
         game["winner_side"] = "地主" if player_id == game["landlord"] else "农民"
+        settle_finished_round(room, player_id)
         game["logs"].append(f"{player_name(room, player_id)} 率先出完手牌，{game['winner_side']}胜利。")
     else:
         game["turn"] = next_player(game["order"], player_id)
     touch(room)
+
+
+def settle_finished_round(room, winner_id):
+    game = room["game"]
+    if game.get("scored"):
+        return
+
+    landlord_id = game["landlord"]
+    multiplier = current_multiplier(game)
+    score_changes = {}
+
+    for player_id in game["order"]:
+        stats = get_player_stats(room, player_id)
+        if winner_id == landlord_id:
+            delta = multiplier * 2 if player_id == landlord_id else -multiplier
+            if player_id == landlord_id:
+                stats["wins"] += 1
+                stats["landlord_wins"] += 1
+        else:
+            delta = -multiplier * 2 if player_id == landlord_id else multiplier
+            if player_id != landlord_id:
+                stats["wins"] += 1
+                stats["farmer_wins"] += 1
+
+        stats["score"] += delta
+        score_changes[player_id] = delta
+
+    game["multiplier"] = multiplier
+    game["score_changes"] = score_changes
+    game["scored"] = True
 
 
 def create_room(name):
@@ -465,6 +528,7 @@ def create_room(name):
         "updated_at": now(),
         "version": 1,
         "round_number": 0,
+        "stats": {player["id"]: default_player_stats()},
     }
     ROOMS[room_id] = room
     return room, player
@@ -477,6 +541,8 @@ def join_room(room, name):
         raise ApiError(HTTPStatus.CONFLICT, "房间已经满了。")
     player = create_player(name)
     room["players"].append(player)
+    room.setdefault("stats", {})
+    room["stats"][player["id"]] = default_player_stats()
     touch(room)
     return player
 
@@ -560,6 +626,7 @@ def build_state(room, viewer):
     players = []
     for player in room["players"]:
         hand = game["hands"].get(player["id"], []) if game else []
+        stats = get_player_stats(room, player["id"])
         players.append(
             {
                 "id": player["id"],
@@ -569,6 +636,10 @@ def build_state(room, viewer):
                 "isLandlord": bool(game and game["landlord"] == player["id"]),
                 "handCount": len(hand),
                 "bid": game["bids"].get(player["id"]) if game else None,
+                "score": stats["score"],
+                "wins": stats["wins"],
+                "landlordWins": stats["landlord_wins"],
+                "farmerWins": stats["farmer_wins"],
             }
         )
 
@@ -594,11 +665,15 @@ def build_state(room, viewer):
         "myHand": game["hands"].get(viewer["id"], []) if game else [],
         "turnPlayerId": game["turn"] if game else None,
         "highestBid": game["highest_bid"] if game else 0,
+        "baseScore": max(1, game["highest_bid"] if game else 1),
+        "multiplier": current_multiplier(game),
+        "bombCount": game["bomb_count"] if game else 0,
         "landlordPlayerId": game["landlord"] if game else None,
         "kitty": game["kitty"] if game and game["landlord"] else [],
         "lastPlay": last_play,
         "winnerPlayerId": game["winner"] if game else None,
         "winnerSide": game["winner_side"] if game else None,
+        "scoreChanges": game["score_changes"] if game else {},
         "logs": game["logs"][-16:] if game else [],
         "canStart": viewer["id"] == room["host_id"] and room_phase(room) == "waiting" and len(room["players"]) == PLAYER_MAX,
         "canRestart": viewer["id"] == room["host_id"] and bool(game and game["phase"] == "finished"),
