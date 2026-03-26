@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import random
 import socket
 import threading
@@ -19,6 +20,7 @@ ROOMS = {}
 ROOM_LOCK = threading.Lock()
 SERVER_PORT = 8000
 LAN_IP = "127.0.0.1"
+PUBLIC_BASE_URL = ""
 
 PLAYER_MIN = 3
 PLAYER_MAX = 3
@@ -58,6 +60,29 @@ def local_ip():
             return "127.0.0.1"
     finally:
         sock.close()
+
+
+def normalize_base_url(value):
+    return (value or "").strip().rstrip("/")
+
+
+def default_origin():
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+    return f"http://{LAN_IP}:{SERVER_PORT}"
+
+
+def request_origin(handler=None):
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+    if handler:
+        forwarded_proto = (handler.headers.get("X-Forwarded-Proto") or "").split(",", 1)[0].strip()
+        forwarded_host = (handler.headers.get("X-Forwarded-Host") or "").split(",", 1)[0].strip()
+        host = forwarded_host or (handler.headers.get("Host") or "").strip()
+        if host:
+            proto = forwarded_proto or "http"
+            return f"{proto}://{host}"
+    return default_origin()
 
 
 def sanitize_name(name):
@@ -561,16 +586,16 @@ def get_player(room, player_id, token):
     return player
 
 
-def build_share_url(room_id):
-    return f"http://{LAN_IP}:{SERVER_PORT}/game.html?room={room_id}"
+def build_share_url(room_id, origin=None):
+    return f"{(origin or default_origin()).rstrip('/')}/game.html?room={room_id}"
 
 
-def build_room_summary(room):
+def build_room_summary(room, origin=None):
     return {
         "roomId": room["id"],
         "roundNumber": room.get("round_number", 0),
         "phase": room_phase(room),
-        "shareUrl": build_share_url(room["id"]),
+        "shareUrl": build_share_url(room["id"], origin),
         "playerCount": len(room["players"]),
         "capacity": PLAYER_MAX,
         "players": [{"id": player["id"], "name": player["name"]} for player in room["players"]],
@@ -578,7 +603,7 @@ def build_room_summary(room):
     }
 
 
-def build_lobby_rooms():
+def build_lobby_rooms(origin=None):
     items = []
     for room in sorted(ROOMS.values(), key=lambda item: (room_phase(item) != "waiting", -item["updated_at"])):
         phase = room_phase(room)
@@ -597,7 +622,7 @@ def build_lobby_rooms():
                 "roundNumber": room.get("round_number", 0),
                 "phase": phase,
                 "status": status,
-                "shareUrl": build_share_url(room["id"]),
+                "shareUrl": build_share_url(room["id"], origin),
                 "playerCount": player_count,
                 "capacity": PLAYER_MAX,
                 "hostName": host["name"],
@@ -620,7 +645,7 @@ def build_lobby_rooms():
     }
 
 
-def build_state(room, viewer):
+def build_state(room, viewer, origin=None):
     game = room["game"]
     order = [player["id"] for player in room["players"]]
     players = []
@@ -656,7 +681,7 @@ def build_state(room, viewer):
         "phase": room_phase(room),
         "version": room["version"],
         "roundNumber": room.get("round_number", 0),
-        "shareUrl": build_share_url(room["id"]),
+        "shareUrl": build_share_url(room["id"], origin),
         "playerId": viewer["id"],
         "playerName": viewer["name"],
         "hostPlayerId": room["host_id"],
@@ -734,18 +759,23 @@ class DdzHandler(SimpleHTTPRequestHandler):
                 cleanup_rooms()
             parsed = urlparse(self.path)
             if parsed.path == "/api/server-info":
+                origin = request_origin(self)
+                local_origin = f"http://{LAN_IP}:{SERVER_PORT}"
                 self.write_json(
                     {
+                        "origin": origin,
                         "port": SERVER_PORT,
                         "lanIp": LAN_IP,
-                        "lanOrigin": f"http://{LAN_IP}:{SERVER_PORT}",
+                        "lanOrigin": local_origin,
+                        "publicOrigin": PUBLIC_BASE_URL or origin,
+                        "mode": "public" if origin != local_origin or PUBLIC_BASE_URL else "local",
                     }
                 )
                 return
 
             if parsed.path == "/api/rooms/public":
                 with ROOM_LOCK:
-                    payload = build_lobby_rooms()
+                    payload = build_lobby_rooms(request_origin(self))
                 self.write_json(payload)
                 return
 
@@ -753,7 +783,7 @@ class DdzHandler(SimpleHTTPRequestHandler):
                 room_id = parsed.path.split("/")[3]
                 with ROOM_LOCK:
                     room = get_room(room_id)
-                    payload = build_room_summary(room)
+                    payload = build_room_summary(room, request_origin(self))
                 self.write_json(payload)
                 return
 
@@ -774,12 +804,13 @@ class DdzHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/rooms":
                 with ROOM_LOCK:
                     room, player = create_room(payload.get("name"))
+                    origin = request_origin(self)
                     data = {
                         "roomId": room["id"],
                         "playerId": player["id"],
                         "token": player["token"],
                         "playerName": player["name"],
-                        "shareUrl": build_share_url(room["id"]),
+                        "shareUrl": build_share_url(room["id"], origin),
                     }
                 self.write_json(data, status=HTTPStatus.CREATED)
                 return
@@ -803,7 +834,7 @@ class DdzHandler(SimpleHTTPRequestHandler):
                 with ROOM_LOCK:
                     room = get_room(room_id)
                     player = get_player(room, payload.get("playerId"), payload.get("token"))
-                    data = build_state(room, player)
+                    data = build_state(room, player, request_origin(self))
                 self.write_json(data)
                 return
 
@@ -817,7 +848,7 @@ class DdzHandler(SimpleHTTPRequestHandler):
                     if room_phase(room) != "waiting":
                         raise ApiError(HTTPStatus.CONFLICT, "当前房间已经开始了。")
                     start_round(room)
-                    data = build_state(room, player)
+                    data = build_state(room, player, request_origin(self))
                 self.write_json(data)
                 return
 
@@ -843,7 +874,7 @@ class DdzHandler(SimpleHTTPRequestHandler):
                         start_round(room, "房主开始了新一局。")
                     else:
                         raise ApiError(HTTPStatus.BAD_REQUEST, "不支持的动作。")
-                    data = build_state(room, player)
+                    data = build_state(room, player, request_origin(self))
                 self.write_json(data)
                 return
 
@@ -864,18 +895,26 @@ class DdzHandler(SimpleHTTPRequestHandler):
 
 
 def main():
-    global SERVER_PORT, LAN_IP
+    global SERVER_PORT, LAN_IP, PUBLIC_BASE_URL
 
-    parser = argparse.ArgumentParser(description="局域网斗地主房间服务器")
-    parser.add_argument("--port", type=int, default=8000, help="监听端口，默认 8000")
+    parser = argparse.ArgumentParser(description="斗地主房间服务器")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")), help="监听端口，默认 8000")
+    parser.add_argument(
+        "--public-base-url",
+        default=os.environ.get("PUBLIC_BASE_URL", ""),
+        help="公网访问地址，例如 https://ddz.example.com",
+    )
     args = parser.parse_args()
 
     SERVER_PORT = args.port
     LAN_IP = local_ip()
+    PUBLIC_BASE_URL = normalize_base_url(args.public_base_url)
 
     server = ThreadingHTTPServer(("0.0.0.0", SERVER_PORT), DdzHandler)
     print(f"本机访问: http://127.0.0.1:{SERVER_PORT}")
     print(f"局域网访问: http://{LAN_IP}:{SERVER_PORT}")
+    if PUBLIC_BASE_URL:
+        print(f"公网访问: {PUBLIC_BASE_URL}")
     print("按 Ctrl+C 停止服务器")
     try:
         server.serve_forever()

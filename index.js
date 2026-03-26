@@ -91,14 +91,14 @@ function renderRoomList(payload) {
   const rooms = payload.rooms || [];
   const joinableRooms = rooms.filter((room) => room.canJoin);
   hallStats.textContent = joinableRooms.length
-    ? `同网里有 ${joinableRooms.length} 张可加入的牌桌`
+    ? `当前有 ${joinableRooms.length} 张可加入的牌桌`
     : "当前没有等待中的牌桌";
 
   if (!rooms.length) {
     roomList.innerHTML = `
       <div class="room-empty">
         <strong>还没有人开桌</strong>
-        <span>你可以先创建一桌，其他设备打开这个地址后就能直接看见。</span>
+        <span>你可以先创建一桌，其他人打开这个地址后就能直接看见。</span>
       </div>
     `;
     return;
@@ -122,8 +122,8 @@ async function loadLobbyRooms(showError = false) {
     hallStats.textContent = "大厅刷新失败";
     roomList.innerHTML = `
       <div class="room-empty">
-        <strong>暂时读不到局域网大厅</strong>
-        <span>请确认服务端已经启动，然后再刷新一次。</span>
+        <strong>暂时读不到房间大厅</strong>
+        <span>请确认当前页面对应的房间服务可访问，然后再刷新一次。</span>
       </div>
     `;
   } finally {
@@ -139,7 +139,7 @@ async function bootstrapHome() {
 
   try {
     const info = await apiGet("/api/server-info");
-    serverOrigin.textContent = info.lanOrigin;
+    serverOrigin.textContent = info.origin || info.publicOrigin || info.lanOrigin;
   } catch (error) {
     serverOrigin.textContent = "无法读取服务器地址";
     setMessage(homeMessage, error.message, true);
@@ -152,7 +152,7 @@ async function bootstrapHome() {
 copyOriginBtn.addEventListener("click", async () => {
   try {
     await copyText(serverOrigin.textContent);
-    setMessage(homeMessage, "局域网地址已复制。");
+    setMessage(homeMessage, "访问地址已复制。");
   } catch (_) {
     setMessage(homeMessage, "复制失败，请手动复制地址。", true);
   }

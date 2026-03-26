@@ -447,6 +447,14 @@ button:disabled {
   animation: deskLift 0.5s ease;
 }
 
+.table-felt.is-urgent {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 245, 220, 0.08),
+    0 0 0 1px rgba(255, 156, 136, 0.18),
+    0 0 36px rgba(255, 114, 87, 0.14),
+    0 18px 44px rgba(7, 25, 14, 0.28);
+}
+
 .table-corner-light {
   position: absolute;
   top: -90px;
@@ -464,6 +472,35 @@ button:disabled {
 
 .table-corner-light.right {
   right: -80px;
+}
+
+.deal-trails,
+.trick-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.deal-trails {
+  z-index: 2;
+}
+
+.deal-trail-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 42px;
+  height: 58px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 243, 201, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 242, 206, 0.22), transparent 42%),
+    linear-gradient(180deg, #aa2121 0%, #6e0d14 100%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  transform: translate(calc(var(--deal-start-x) - 50%), calc(var(--deal-start-y) - 50%)) rotate(0deg) scale(0.92);
+  opacity: 0;
+  animation: dealFly 0.6s ease-out forwards;
+  animation-delay: var(--deal-delay, 0ms);
 }
 
 .seat-badge {
@@ -506,6 +543,11 @@ button:disabled {
 .seat-card.landlord {
   box-shadow: 0 0 0 1px rgba(255, 210, 112, 0.24), 0 14px 28px rgba(0, 0, 0, 0.16);
   background: linear-gradient(180deg, rgba(66, 35, 8, 0.52), rgba(23, 19, 8, 0.42));
+}
+
+.seat-card.is-turn {
+  border-color: rgba(255, 226, 146, 0.4);
+  box-shadow: 0 0 0 1px rgba(255, 226, 146, 0.14), 0 14px 28px rgba(0, 0, 0, 0.16);
 }
 
 .seat-empty {
@@ -627,6 +669,15 @@ button:disabled {
 .seat-score-delta.negative {
   background: rgba(255, 158, 138, 0.14);
   color: #ffb0a1;
+}
+
+.seat-turn-aura {
+  position: absolute;
+  inset: -8px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 224, 146, 0.26);
+  opacity: 0.72;
+  animation: seatTurnPulse 1.2s ease-in-out infinite;
 }
 
 .seat-bubble {
@@ -856,6 +907,14 @@ button:disabled {
   margin-bottom: 4px;
 }
 
+.desk-play-area.play-hot {
+  animation: trickZonePulse 0.52s ease;
+}
+
+.desk-play-area.is-empty {
+  opacity: 0.9;
+}
+
 .desk-turn {
   font-size: 22px;
   font-weight: 700;
@@ -889,6 +948,7 @@ button:disabled {
   color: #ffd0c4;
   border-color: rgba(255, 138, 120, 0.48);
   box-shadow: 0 0 22px rgba(255, 82, 52, 0.2);
+  animation: urgentTimerPulse 0.75s ease-in-out infinite;
 }
 
 .center-toast {
@@ -936,6 +996,67 @@ button:disabled {
     radial-gradient(circle at center, rgba(255, 236, 173, 0.44), transparent 34%),
     radial-gradient(circle at center, rgba(255, 214, 127, 0.24), transparent 62%);
   animation: impactBomb 0.45s ease;
+}
+
+.trick-burst {
+  z-index: 3;
+  display: grid;
+  place-items: center;
+}
+
+.trick-burst-inner {
+  min-width: 180px;
+  padding: 14px 22px;
+  border-radius: 24px;
+  text-align: center;
+  background: rgba(17, 10, 6, 0.84);
+  border: 1px solid rgba(255, 221, 145, 0.18);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+}
+
+.trick-burst.normal .trick-burst-inner {
+  background: rgba(17, 10, 6, 0.82);
+}
+
+.trick-burst.bomb .trick-burst-inner {
+  background: linear-gradient(180deg, rgba(92, 28, 18, 0.92), rgba(34, 14, 11, 0.94));
+}
+
+.trick-burst strong {
+  display: block;
+  color: #ffe2a0;
+  font-size: 34px;
+  font-family: "STKaiti", "KaiTi", serif;
+  letter-spacing: 0.08em;
+}
+
+.trick-burst.bomb strong {
+  color: #ffd1c6;
+}
+
+.trick-burst-cards {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.trick-burst-card {
+  min-width: 36px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fffefa 0%, #fcebcf 100%);
+  color: var(--card-ink);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
+  font-weight: 700;
+}
+
+.trick-burst-card.red {
+  color: #c53b2f;
+}
+
+.trick-burst:not(.hidden) .trick-burst-inner {
+  animation: trickBurstIn 0.9s ease both;
 }
 
 .stage-announcement {
@@ -1224,6 +1345,11 @@ button:disabled {
   border-color: rgba(255, 197, 124, 0.28);
 }
 
+.action-strip.is-urgent {
+  border-color: rgba(255, 163, 142, 0.34);
+  box-shadow: 0 0 0 1px rgba(255, 163, 142, 0.12), var(--shadow);
+}
+
 .action-copy {
   display: grid;
   gap: 4px;
@@ -1371,6 +1497,22 @@ button:disabled {
   }
 }
 
+@keyframes dealFly {
+  0% {
+    opacity: 0;
+    transform: translate(calc(var(--deal-start-x) - 50%), calc(var(--deal-start-y) - 50%)) rotate(0deg) scale(0.92);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--deal-end-x) - 50%), calc(var(--deal-end-y) - 50%)) rotate(var(--deal-rotate, 0deg)) scale(1);
+  }
+}
+
 @keyframes impactBomb {
   0% {
     opacity: 0;
@@ -1429,6 +1571,71 @@ button:disabled {
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes trickBurstIn {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.9);
+  }
+
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1.04);
+  }
+
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+@keyframes urgentTimerPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 18px rgba(255, 82, 52, 0.18);
+  }
+
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 26px rgba(255, 82, 52, 0.3);
+  }
+}
+
+@keyframes seatTurnPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.98);
+  }
+
+  50% {
+    opacity: 0.75;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes trickZonePulse {
+  0% {
+    transform: scale(0.98);
+    box-shadow: 0 0 0 rgba(255, 221, 145, 0);
+  }
+
+  50% {
+    transform: scale(1.01);
+    box-shadow: 0 0 28px rgba(255, 221, 145, 0.14);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: none;
   }
 }
 

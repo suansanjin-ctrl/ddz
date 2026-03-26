@@ -160,6 +160,26 @@ def run_scoring_unit_check():
     server.ROOMS.clear()
 
 
+def run_origin_unit_check():
+    import server
+
+    original_public = server.PUBLIC_BASE_URL
+    original_port = server.SERVER_PORT
+    original_lan_ip = server.LAN_IP
+    try:
+        server.PUBLIC_BASE_URL = "https://ddz.example.com"
+        assert_true(server.build_share_url("ABCD") == "https://ddz.example.com/game.html?room=ABCD", "公网分享链接生成错误")
+
+        server.PUBLIC_BASE_URL = ""
+        server.SERVER_PORT = 4567
+        server.LAN_IP = "10.0.0.8"
+        assert_true(server.build_share_url("WXYZ") == "http://10.0.0.8:4567/game.html?room=WXYZ", "本地分享链接生成错误")
+    finally:
+        server.PUBLIC_BASE_URL = original_public
+        server.SERVER_PORT = original_port
+        server.LAN_IP = original_lan_ip
+
+
 def run_api_checks(base):
     status, host = request(base, "POST", "/api/rooms", {"name": "房主A"})
     assert_true(status == 201, "创建房间失败")
@@ -273,6 +293,7 @@ def main():
     run_cleanup_unit_check()
     run_rule_checks()
     run_scoring_unit_check()
+    run_origin_unit_check()
 
     port = pick_free_port()
     process = subprocess.Popen(

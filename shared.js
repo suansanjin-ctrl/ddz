@@ -49,9 +49,9 @@ async function apiRequest(path, options = {}) {
       window.clearTimeout(timeoutId);
     }
     if (error?.name === "AbortError") {
-      throw new Error("请求超时，请确认局域网服务还在运行。");
+      throw new Error("请求超时，请确认房间服务还在运行。");
     }
-    throw new Error("连接服务器失败，请确认你和房主在同一网络并且服务已经启动。");
+    throw new Error("连接服务器失败，请确认当前网页对应的房间服务可访问。");
   }
 
   if (timeoutId) {

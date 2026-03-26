@@ -27,9 +27,11 @@ const ui = {
   stagePrompt: document.getElementById("stagePrompt"),
   roundBadge: document.getElementById("roundBadge"),
   baseScoreBadge: document.getElementById("baseScoreBadge"),
+  dealTrails: document.getElementById("dealTrails"),
   seatLeft: document.getElementById("seatLeft"),
   seatRight: document.getElementById("seatRight"),
   mySeat: document.getElementById("mySeat"),
+  trickBurst: document.getElementById("trickBurst"),
   impactFlash: document.getElementById("impactFlash"),
   stageAnnouncement: document.getElementById("stageAnnouncement"),
   resultPanel: document.getElementById("resultPanel"),
@@ -94,6 +96,8 @@ const app = {
   toastTimer: null,
   announcementTimer: null,
   impactTimer: null,
+  dealTrailTimer: null,
+  trickBurstTimer: null,
   audioContext: null,
   audioUnlocked: false,
   audioEnabled: loadAudioPreference(),
@@ -151,6 +155,18 @@ function showCenterToast(text, accent = "") {
   }, 1900);
 }
 
+function clearDealTrails() {
+  window.clearTimeout(app.dealTrailTimer);
+  ui.dealTrails.innerHTML = "";
+  ui.dealTrails.classList.add("hidden");
+}
+
+function clearTrickBurst() {
+  window.clearTimeout(app.trickBurstTimer);
+  ui.trickBurst.className = "trick-burst hidden";
+  ui.trickBurst.innerHTML = "";
+}
+
 function showStageAnnouncement(text, tone = "") {
   window.clearTimeout(app.announcementTimer);
   ui.stageAnnouncement.textContent = text;
@@ -168,6 +184,88 @@ function triggerImpact(kind = "bomb") {
   app.impactTimer = window.setTimeout(() => {
     ui.impactFlash.className = "impact-flash hidden";
   }, 560);
+}
+
+function nodeCenterWithin(container, node) {
+  if (!container || !node) {
+    return null;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  return {
+    x: nodeRect.left - containerRect.left + nodeRect.width / 2,
+    y: nodeRect.top - containerRect.top + nodeRect.height / 2,
+  };
+}
+
+function spawnDealTrails() {
+  clearDealTrails();
+  const start = nodeCenterWithin(ui.tableFelt, ui.deckDock);
+  const leftSeat = ui.seatLeft.querySelector(".seat-card, .seat-empty") || ui.seatLeft;
+  const rightSeat = ui.seatRight.querySelector(".seat-card, .seat-empty") || ui.seatRight;
+  const mySeat = ui.mySeat.querySelector(".seat-card, .seat-empty") || ui.mySeat;
+  const targets = [leftSeat, rightSeat, mySeat]
+    .map((node, index) => {
+      const point = nodeCenterWithin(ui.tableFelt, node);
+      return point
+        ? {
+            point,
+            index,
+          }
+        : null;
+    })
+    .filter(Boolean);
+
+  if (!start || !targets.length) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  const cardsPerSeat = 6;
+  targets.forEach(({ point, index }) => {
+    for (let cardIndex = 0; cardIndex < cardsPerSeat; cardIndex += 1) {
+      const card = document.createElement("span");
+      const spread = (cardIndex - (cardsPerSeat - 1) / 2) * 9;
+      const lift = index === 2 ? 22 : -12;
+      card.className = "deal-trail-card";
+      card.style.setProperty("--deal-start-x", `${start.x}px`);
+      card.style.setProperty("--deal-start-y", `${start.y}px`);
+      card.style.setProperty("--deal-end-x", `${point.x + spread}px`);
+      card.style.setProperty("--deal-end-y", `${point.y + lift + ((cardIndex + index) % 2 === 0 ? -6 : 6)}px`);
+      card.style.setProperty("--deal-rotate", `${index === 0 ? -16 : index === 1 ? 16 : spread * 0.5}deg`);
+      card.style.setProperty("--deal-delay", `${cardIndex * 68 + index * 80}ms`);
+      fragment.appendChild(card);
+    }
+  });
+
+  ui.dealTrails.appendChild(fragment);
+  ui.dealTrails.classList.remove("hidden");
+  app.dealTrailTimer = window.setTimeout(() => {
+    clearDealTrails();
+  }, 1250);
+}
+
+function showTrickBurst(comboLabel, cards = []) {
+  const accent = comboLabel === "炸弹" || comboLabel === "王炸" ? "bomb" : "normal";
+  const preview = cards
+    .slice(0, 5)
+    .map((card) => `<span class="trick-burst-card ${escapeHtml(card.color || "")}">${escapeHtml(card.rank || card.label || "")}</span>`)
+    .join("");
+  clearTrickBurst();
+  ui.trickBurst.innerHTML = `
+    <div class="trick-burst-inner">
+      <strong>${escapeHtml(comboLabel)}</strong>
+      <div class="trick-burst-cards">${preview}</div>
+    </div>
+  `;
+  ui.trickBurst.className = `trick-burst ${accent}`.trim();
+  ui.trickBurst.classList.remove("hidden");
+  ui.trickZone.classList.remove("play-hot");
+  void ui.trickZone.offsetWidth;
+  ui.trickZone.classList.add("play-hot");
+  app.trickBurstTimer = window.setTimeout(() => {
+    clearTrickBurst();
+  }, 980);
 }
 
 function ensureAudioContext() {
@@ -312,6 +410,7 @@ function deriveStateEffects(state) {
     if (state.phase === "bidding") {
       showCenterToast("开始发牌", "gold");
       showStageAnnouncement("发牌", "gold");
+      spawnDealTrails();
       playCue("deal");
     } else if (state.phase === "playing" && state.landlordPlayerId) {
       const landlord = state.players.find((player) => player.id === state.landlordPlayerId);
@@ -341,6 +440,7 @@ function deriveStateEffects(state) {
 
   if (state.lastPlay && previous?.lastPlayKey !== currentMeta.lastPlayKey) {
     showSeatBubble(state.lastPlay.playerId, state.lastPlay.comboLabel);
+    showTrickBurst(state.lastPlay.comboLabel, state.lastPlay.cards);
     if (state.lastPlay.comboLabel === "炸弹" || state.lastPlay.comboLabel === "王炸") {
       showCenterToast(state.lastPlay.comboLabel, "red");
       showStageAnnouncement(state.lastPlay.comboLabel, "bomb");
@@ -400,6 +500,8 @@ function showClosedRoom(message) {
   ui.centerToast.classList.add("hidden");
   ui.stageAnnouncement.className = "stage-announcement hidden";
   ui.impactFlash.className = "impact-flash hidden";
+  clearDealTrails();
+  clearTrickBurst();
   updateDeskHud(0, 1, 0);
   ui.resultPanel.classList.add("hidden");
   ui.overlay.classList.remove("hidden");
@@ -421,7 +523,7 @@ function showClosedRoom(message) {
   ui.actionStrip.classList.remove("is-my-turn", "is-finished");
   ui.restartBtn.classList.add("hidden");
   ui.playerSummary.textContent = "当前没有可用牌桌";
-  ui.actionHint.textContent = "请返回首页，从局域网大厅重新选择牌桌。";
+  ui.actionHint.textContent = "请返回首页，从在线大厅重新选择牌桌。";
   setMessage(ui.overlayMessage, message || "房间已失效。", true);
 }
 
@@ -491,14 +593,17 @@ function stopDealEffect() {
   window.clearTimeout(app.dealTimer);
   window.clearTimeout(app.dealCleanupTimer);
   ui.tableFelt.classList.remove("is-dealing");
+  ui.tableFelt.classList.remove("is-urgent");
   ui.myHand.classList.remove("dealing");
   ui.dealBanner.classList.add("hidden");
+  clearDealTrails();
 }
 
 function triggerDealEffect() {
   stopDealEffect();
   ui.tableFelt.classList.add("is-dealing");
   ui.myHand.classList.add("dealing");
+  spawnDealTrails();
   ui.dealBanner.textContent = "发牌中";
   ui.dealBanner.classList.remove("hidden");
   app.dealTimer = window.setTimeout(() => {
@@ -557,7 +662,7 @@ function seatMarkup(player, options = {}) {
       : count;
   const seatDetail =
     typeof player.score === "number" && typeof player.wins === "number" ? `${count} · ${scoreSummary}` : count;
-  const turn = options.isTurn ? '<span class="seat-turning">出牌中</span>' : "";
+  const turn = options.isTurn ? '<span class="seat-turning">出牌中</span><span class="seat-turn-aura"></span>' : "";
   const landlordFlag = player.isLandlord ? '<span class="landlord-flag">地主</span>' : "";
   const hostFlag = player.isHost ? '<span class="host-flag">房主</span>' : "";
   const scoreDelta =
@@ -568,7 +673,7 @@ function seatMarkup(player, options = {}) {
   const bubble = seatBubbleMarkup(player.id);
 
   return `
-    <div class="seat-card ${options.self ? "self" : ""} ${player.isLandlord ? "landlord" : ""}">
+    <div class="seat-card ${options.self ? "self" : ""} ${player.isLandlord ? "landlord" : ""} ${options.isTurn ? "is-turn" : ""}">
       <div class="seat-avatar">${avatar}</div>
       <div class="seat-meta">
         <strong>${escapeHtml(player.name)}</strong>
@@ -620,6 +725,8 @@ function renderPublicSummary(summary) {
   app.seatBubbles = {};
   ui.stageAnnouncement.className = "stage-announcement hidden";
   ui.impactFlash.className = "impact-flash hidden";
+  clearDealTrails();
+  clearTrickBurst();
   updateDeskHud(summary.roundNumber || 0, 1, 0);
   const phase = summary.phase === "waiting" ? "waiting" : "playing";
   rememberPhase(phase);
@@ -677,6 +784,8 @@ function renderWaitingState(state) {
   app.seatBubbles = {};
   ui.stageAnnouncement.className = "stage-announcement hidden";
   ui.impactFlash.className = "impact-flash hidden";
+  clearDealTrails();
+  clearTrickBurst();
   updateDeskHud(state.roundNumber || 0, 1, 0);
   rememberPhase("waiting");
   app.turnDeadline = 0;
@@ -689,7 +798,7 @@ function renderWaitingState(state) {
     state.canStart ? "牌桌已坐满" : "等待玩家入座",
     state.canStart
       ? "人已经齐了，房主点开始后会直接发牌。"
-      : "同一局域网下的人打开首页后，会在大厅里直接看到这张桌子。",
+      : "其他人打开同一个首页地址后，会在大厅里直接看到这张桌子。",
     "开局后会自动发出底牌"
   );
   ui.roomCode.textContent = state.roomId;
@@ -699,7 +808,7 @@ function renderWaitingState(state) {
   ui.overlayDesc.textContent = state.canStart
     ? "现在点击开始游戏，所有人都将在这个牌桌里直接进入对局。"
     : state.players.length < 3
-      ? "同一网络下的人打开首页后，会在大厅里看到这桌并直接加入。"
+      ? "其他人打开同一个首页地址后，会在大厅里看到这桌并直接加入。"
       : "等待房主开始游戏。";
   ui.joinForm.classList.add("hidden");
   ui.startBtn.classList.toggle("hidden", !state.canStart);
@@ -804,11 +913,13 @@ function renderPlayingState(state) {
 
   ui.kittyZone.innerHTML = playedCardsMarkup(state.kitty);
   if (state.lastPlay) {
+    ui.trickZone.classList.remove("is-empty");
     ui.trickZone.innerHTML = `
       <div class="desk-play-head">${escapeHtml(lastPlayPlayer?.name || "玩家")} · ${escapeHtml(state.lastPlay.comboLabel)}</div>
       <div class="desk-card-row large">${playedCardsMarkup(state.lastPlay.cards)}</div>
     `;
   } else {
+    ui.trickZone.classList.add("is-empty");
     ui.trickZone.innerHTML = '<div class="desk-placeholder">本轮还没人出牌</div>';
   }
 
@@ -878,6 +989,8 @@ function syncTurnTimer(state) {
 function paintTurnTimer() {
   if (!app.turnDeadline) {
     ui.turnTimer.classList.add("hidden");
+    ui.actionStrip.classList.remove("is-urgent");
+    ui.tableFelt.classList.remove("is-urgent");
     return;
   }
   const left = Math.max(0, Math.ceil((app.turnDeadline - Date.now()) / 1000));
@@ -885,6 +998,9 @@ function paintTurnTimer() {
   ui.turnTimer.textContent = String(left);
   ui.turnTimer.style.setProperty("--timer-progress", `${progress}`);
   ui.turnTimer.classList.toggle("danger", left <= 5);
+  const urgent = Boolean(app.state && app.state.phase !== "finished" && app.state.turnPlayerId === app.state.playerId && left <= 5);
+  ui.actionStrip.classList.toggle("is-urgent", urgent);
+  ui.tableFelt.classList.toggle("is-urgent", urgent);
 }
 
 function renderMyHand(cards) {
